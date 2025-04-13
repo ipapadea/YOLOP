@@ -186,6 +186,8 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
 
     for batch_i, (img, target, paths, shapes) in tqdm(enumerate(val_loader), total=len(val_loader)):
+        # if batch_i>5:
+        #     break
         if not config.DEBUG:
             img = img.to(device, non_blocking=True)
             assign_target = []

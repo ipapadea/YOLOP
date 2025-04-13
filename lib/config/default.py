@@ -4,9 +4,9 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
-_C.LOG_DIR = 'runs/'
-_C.GPUS = (0,1)     
-_C.WORKERS = 8
+_C.LOG_DIR = 'runs/twinlitenet_with_trilitenet'
+_C.GPUS = (0,)
+_C.WORKERS =0
 _C.PIN_MEMORY = False
 _C.PRINT_FREQ = 20
 _C.AUTO_RESUME =False       # Resume from the last training interrupt
@@ -28,7 +28,7 @@ _C.MODEL.STRU_WITHSHARE = False     #add share_block to segbranch
 _C.MODEL.HEADS_NAME = ['']
 _C.MODEL.PRETRAINED = ""
 _C.MODEL.PRETRAINED_DET = ""
-_C.MODEL.IMAGE_SIZE = [640, 640]  # width * height, ex: 192 * 256
+_C.MODEL.IMAGE_SIZE = [384, 640]  # width * height, ex: 192 * 256
 _C.MODEL.EXTRA = CN(new_allowed=True)
 
 
@@ -50,13 +50,13 @@ _C.LOSS.LL_IOU_GAIN = 0.2 # lane line iou loss gain
 
 # DATASET related params
 _C.DATASET = CN(new_allowed=True)
-_C.DATASET.DATAROOT = '/home/zwt/bdd/bdd100k/images/100k'       # the path of images folder
-_C.DATASET.LABELROOT = '/home/zwt/bdd/bdd100k/labels/100k'      # the path of det_annotations folder
-_C.DATASET.MASKROOT = '/home/zwt/bdd/bdd_seg_gt'                # the path of da_seg_annotations folder
-_C.DATASET.LANEROOT = '/home/zwt/bdd/bdd_lane_gt'               # the path of ll_seg_annotations folder
-_C.DATASET.DATASET = 'BddDataset'
-_C.DATASET.TRAIN_SET = 'train'
-_C.DATASET.TEST_SET = 'val'
+_C.DATASET.DATAROOT = r'C:\\Users\ilpap\Downloads\phd\data\100kimages\100k'       # the path of images folder
+_C.DATASET.LABELROOT = r'C:\\Users\ilpap\Downloads\phd\data\det_annotations\data2\zwt\bdd\bdd100k\labels\100k'      # the path of det_annotations folder
+_C.DATASET.MASKROOT = r'C:\\Users\ilpap\Downloads\phd\data\da_seg_annotations\bdd_seg_gt'                # the path of da_seg_annotations folder
+_C.DATASET.LANEROOT = r'C:\\Users\ilpap\Downloads\phd\data\ll_seg_annotations\bdd_lane_gt'               # the path of ll_seg_annotations folder
+_C.DATASET.DATASET = r'BddDataset'
+_C.DATASET.TRAIN_SET = r'train4'
+_C.DATASET.TEST_SET = r'val4'
 _C.DATASET.DATA_FORMAT = 'jpg'
 _C.DATASET.SELECT_DATA = False
 _C.DATASET.ORG_IMG_SIZE = [720, 1280]
@@ -93,7 +93,7 @@ _C.TRAIN.BEGIN_EPOCH = 0
 _C.TRAIN.END_EPOCH = 240
 
 _C.TRAIN.VAL_FREQ = 1
-_C.TRAIN.BATCH_SIZE_PER_GPU =24
+_C.TRAIN.BATCH_SIZE_PER_GPU = 8
 _C.TRAIN.SHUFFLE = True
 
 _C.TRAIN.IOU_THRESHOLD = 0.2
@@ -118,7 +118,7 @@ _C.TRAIN.PLOT = True                #
 
 # testing
 _C.TEST = CN(new_allowed=True)
-_C.TEST.BATCH_SIZE_PER_GPU = 24
+_C.TEST.BATCH_SIZE_PER_GPU = 8
 _C.TEST.MODEL_FILE = ''
 _C.TEST.SAVE_JSON = False
 _C.TEST.SAVE_TXT = False

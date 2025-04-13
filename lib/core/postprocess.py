@@ -22,6 +22,8 @@ def build_targets(cfg, predictions, targets, model):
     # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
     det = model.module.model[model.module.detector_index] if is_parallel(model) \
         else model.model[model.detector_index]  # Detect() module
+    # det = model.detection_head #eeegw to vala auto
+
     # print(type(model))
     # det = model.model[model.detector_index]
     # print(type(det))
@@ -70,8 +72,21 @@ def build_targets(cfg, predictions, targets, model):
         gi, gj = gij.T  # grid xy indices
 
         # Append
+        # a = t[:, 6].long()  # anchor indices
+        #
+        # print(f"gj type: {gj.dtype}, gi type: {gi.dtype}")
+        # gj = gj.clamp(0, gain[3] - 1).long()
+        # gi = gi.clamp(0, gain[2] - 1).long()
+        # print(f"Post-clamp gj type: {gj.dtype}, gi type: {gi.dtype}")
+        #
+        # indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices
+        # Convert and clamp
+        gj = gj.clamp(0, int(gain[3]) - 1)  # Ensure gj is int64
+        gi = gi.clamp(0, int(gain[2]) - 1)  # Ensure gi is int64
+
+        # Append
         a = t[:, 6].long()  # anchor indices
-        indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices
+        indices.append((b, a, gj, gi))  # image, anchor, grid indices
         tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
         anch.append(anchors[a])  # anchors
         tcls.append(c)  # class

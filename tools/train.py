@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument('--logDir',
                         help='log directory',
                         type=str,
-                        default='runs/')
+                        default='runs_twinlitenet_with_yolopv3/')
     parser.add_argument('--dataDir',
                         help='data directory',
                         type=str,
