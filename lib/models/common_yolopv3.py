@@ -1305,7 +1305,7 @@ class Repconv_Block(nn.Module):
         self.repconv_3 = RepConv(512, out_dim[3], k=3, s=1, p=1)
 
     def forward(self, x):
-        _, _, c2, c3, c4, c5 = x
+        _,_, c2, c3, c4, c5 = x
         # RepCpnv
         c27 = self.repconv_0(c2)  # P2
         c28 = self.repconv_1(c3)  # P3

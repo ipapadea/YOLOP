@@ -1643,7 +1643,7 @@ class MultiHGDecoderTwinLiteNet2(nn.Module):
 
 
 class MHGDTwinLiteNet2Scaled(nn.Module):
-    def __init__(self, in_channels, out_channels,scale, num_center, norm_layer=None, up_kwargs=None):
+    def __init__(self, scale, num_center, norm_layer=None, up_kwargs=None):
         super(MHGDTwinLiteNet2Scaled, self).__init__()
         if norm_layer is None:
             norm_layer = torch.nn.BatchNorm2d  # Default normalization layer
@@ -1654,10 +1654,12 @@ class MHGDTwinLiteNet2Scaled(nn.Module):
             nn.ReLU(inplace=True))
         self.conv40 = nn.Sequential(
             nn.Conv2d(int(131 * scale), int(64 * scale), 1, padding=0, bias=False),
+            # nn.Conv2d(int(128 * scale), int(64 * scale), 1, padding=0, bias=False),
             norm_layer(int(64 * scale)),
             nn.ReLU(inplace=True))
         self.conv30 = nn.Sequential(
             nn.Conv2d(int(19 * scale), int(64 * scale), 1, padding=0, bias=False),
+            # nn.Conv2d(int(64 * scale), int(64 * scale), 2, padding=0, bias=False),
             norm_layer(int(64 * scale)),
             nn.ReLU(inplace=True))
 
@@ -1666,7 +1668,7 @@ class MHGDTwinLiteNet2Scaled(nn.Module):
                                                       out_channels=int(32 * scale), norm_layer=norm_layer)
 
     def forward(self, *inputs):
-        feat_res8, feat_res16, feat_res32 = inputs[0]
+        feat_res8, feat_res16, feat_res32 = inputs#[0]
         feat_32 = self.conv50(feat_res32)
         feat_16 = self.conv40(feat_res16)
         feat_8 = self.conv30(feat_res8)

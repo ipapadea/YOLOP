@@ -15,7 +15,7 @@ from lib.utils.utils import time_synchronized
 from lib.models.common_yolopv3 import GhostConv, RepConv, PaFPNELAN_C2, Conv, seg_head, PSA_p
 from lib.models.common_yolopv3 import ELANBlock_Head, FPN_C5, FPN_C2, ELANBlock_Head_Ghost, Repconv_Block, ELANNet, \
     PaFPNELAN_Ghost_C2, IDetect, LitePAN
-from lib.models.TwinLite_2_scaled_Object_Detection import ESPNet2_Encoder_scaledExtended, UPx2_scaled
+from lib.models.TwinLite_2_scaled_Object_Detection import ESPNet2_Encoder_scaledExtended, MHGDTwinLiteNet2Scaled, UPx2_scaled
 # from torchsummary import summary
 
 # TwinLiteNet2Scaled = [
@@ -35,7 +35,7 @@ from lib.models.TwinLite_2_scaled_Object_Detection import ESPNet2_Encoder_scaled
 # ]
 
 TwinLiteNet2Scaled = [
-    [3, 4, 5],
+    [3, 5, 6],
 
     # Backbone
     [-1, ESPNet2_Encoder_scaledExtended, [5, 3, 1.0]],
@@ -52,9 +52,10 @@ TwinLiteNet2Scaled = [
                        [33.29597, 78.16243, 47.86408, 108.28889, 36.33312, 189.21414],
                        [73.09806, 144.64581, 101.18080, 253.37000, 136.02821, 408.82248]], [128, 256, 512, 1024]]],
 
-    # Heads
-    [0, UPx2_scaled, [32, 2]],
-    [0, UPx2_scaled, [32, 2]],
+    # DA & LLS Heads
+    [0, MHGDTwinLiteNet2Scaled, [1, 64]],
+    [-1, UPx2_scaled, [32, 2]],
+    [-2, UPx2_scaled, [32, 2]],
 ]
 
 
@@ -109,31 +110,47 @@ class MCnet(nn.Module):
         cache = []
         out = []
         det_out = None
-        seg_feats = None  # da_feat, ll_feat
+        det_feats, seg_feats = None, None  # Initialize feature holders
 
+        # Forward through each block in the config
         for i, block in enumerate(self.model):
-            x = cache[block.from_] if block.from_ != -1 else x
+            if block.from_ != -1:
+                x = cache[block.from_] if isinstance(block.from_, int) else [x if j == -1 else cache[j] for j in
+                                                                             block.from_]
 
-            # Dispatch: Only handle complex blocks separately
-            if isinstance(block, PaFPNELAN_Ghost_C2):
-                x = block(x[:4]) if isinstance(x, (list, tuple)) else block(x)
-            elif isinstance(block, IDetect):
+            # Handle backbone output (now returns tuple of tuples)
+            if i == 0:  # Assuming index 0 is ESPNet2_Encoder_scaledExtended
+                det_feats, seg_feats = block(x)  # Unpack (C3-C6), (C2-C4)
+                x = det_feats  # For compatibility with subsequent blocks
+                cache.append(x)  # Store backbone output in cache
+                continue
+
+            # Process detection path (PaFPN -> Repconv -> IDetect)
+            elif isinstance(block, PaFPNELAN_Ghost_C2):
+                x = block(det_feats)  # Process C3-C6 features
+
+            elif isinstance(block, Repconv_Block) or isinstance(block, IDetect):
                 x = block(x)
-                det_out = x
+                if isinstance(block, IDetect):
+                    det_out = x
+
+            # Process segmentation path (MHGD)
+            elif isinstance(block, MHGDTwinLiteNet2Scaled):
+                x = block(*seg_feats)  # Unpack C2-C4 features
+
+            # Handle segmentation outputs
             elif i in self.seg_out_idx:
                 seg_index = self.seg_out_idx.index(i)
-                x = block(x[4:][seg_index])
+                x = block(x[seg_index]) if isinstance(x, (list, tuple)) else block(x)
+                out.append(x)
+
             else:
                 x = block(x)
 
-            if i in self.seg_out_idx:
-                out.append(x)
-            cache.append(x if block.index in self.save else None)
+            cache.append(x if i in self.save else None)
 
-        out.insert(0, det_out)
+        out.insert(0, det_out)  # [det_out, da_seg_out, ll_seg_out]
         return out
-
-
     # def forward(self, x):
     #     cache = []
     #     out = []

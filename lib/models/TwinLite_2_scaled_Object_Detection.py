@@ -491,8 +491,7 @@ class ESPNet2_Encoder_scaled(nn.Module):
             self.level3.append(DilatedParllelResidualBlockB(int(128 * scale), int(128 * scale)))
         # self.b3 = CBR(256,32,3) # to evgala gia na mpei o decoder
         self.c5_down = CBR(int(256 * scale), int(256 * scale), kSize=3, stride=2)
-        self.decoder = MHGDTwinLiteNet2Scaled(scale=scale, in_channels=int(64 * scale), out_channels=int(32 * scale),
-                                              num_center=int(64 * scale), norm_layer=nn.BatchNorm2d)
+        self.decoder = MHGDTwinLiteNet2Scaled(scale=scale, num_center=int(64 * scale), norm_layer=nn.BatchNorm2d)
 
     def forward(self, input):
         '''
@@ -572,8 +571,8 @@ class ESPNet2_Encoder_scaledExtended(nn.Module):
         # self.b3 = CBR(256,32,3) # to evgala gia na mpei o decoder
         self.c5_down = CBR(int(256 * scale), int(256 * scale), kSize=3, stride=2)
         self.c6_down = CBR(int(256 * scale), int(512 * scale), kSize=3, stride=2)
-        self.decoder = MHGDTwinLiteNet2Scaled(scale=scale, in_channels=int(64 * scale), out_channels=int(32 * scale),
-                                              num_center=int(64 * scale), norm_layer=nn.BatchNorm2d)
+        # self.decoder = MHGDTwinLiteNet2Scaled(scale=scale, in_channels=int(64 * scale), out_channels=int(32 * scale),
+        #                                       num_center=int(64 * scale), norm_layer=nn.BatchNorm2d)
 
     def forward(self, input):
         '''
@@ -617,11 +616,12 @@ class ESPNet2_Encoder_scaledExtended(nn.Module):
         # print("input of multihgd shape: ", cat_.shape)
 
         ### prosoxi edw to evgala gia na epistrepsw sto original
-        da_seg_feat, ll_seg_feat = self.decoder((output0_cat, output1_cat, cat_))  # eksodos tou multiHGD
+        # da_seg_feat, ll_seg_feat = self.decoder((output0_cat, output1_cat, cat_))  # eksodos tou multiHGD
         # na balw edw ena breakpoint na doume ti resolutions exoun auta na tsekarw oti ontws
         # dinw ta swsta
         # episis edw na dokimasw kai output2 anti gia output2_0
-        return [output1_0, output2_0, output2_cat, n6, da_seg_feat, ll_seg_feat]
+        # return [output1_0, output2_0, output2_cat, n6, da_seg_feat, ll_seg_feat]
+        return (output1_0, output2_0, output2_cat, n6), (output0_cat, output1_cat, cat_)
 
 
 
