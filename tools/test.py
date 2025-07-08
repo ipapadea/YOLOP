@@ -65,7 +65,7 @@ def main():
 
     # bulid up model
     # start_time = time.time()
-    print("begin to bulid up model...")
+    print("begin to build up model...")
     # DP mode
     device = select_device(logger, batch_size=cfg.TEST.BATCH_SIZE_PER_GPU* len(cfg.GPUS)) if not cfg.DEBUG \
         else select_device(logger, 'cpu')
@@ -81,8 +81,11 @@ def main():
 
     # det_idx_range = [str(i) for i in range(0,25)]
     model_dict = model.state_dict()
-    checkpoint_file = args.weights
+    checkpoint_file = args.weights[0]
     logger.info("=> loading checkpoint '{}'".format(checkpoint_file))
+    print(f"checkpoint_file type: {type(checkpoint_file)}")
+    print(f"checkpoint_file: {checkpoint_file}")
+
     checkpoint = torch.load(checkpoint_file)
     checkpoint_dict = checkpoint['state_dict']
     # checkpoint_dict = {k: v for k, v in checkpoint['state_dict'].items() if k.split(".")[1] in det_idx_range}
