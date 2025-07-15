@@ -52,8 +52,8 @@ def detect(cfg,opt):
 
     # Load model
     model = get_net(cfg)
-    checkpoint = torch.load(opt.weights, map_location= device)
-    model.load_state_dict(checkpoint['state_dict'])
+    # checkpoint = torch.load(opt.weights, map_location= device)
+    # model.load_state_dict(checkpoint['state_dict'])
     model = model.to(device)
     # Count total parameters
     total_params = sum(p.numel() for p in model.parameters())

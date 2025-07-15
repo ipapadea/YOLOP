@@ -595,6 +595,118 @@ class IDetect(nn.Module):
                                       device=z.device)
         box @= convert_matrix
         return (box, score)
+class IDetect3(nn.Module):
+    stride = None  # strides computed during build
+    export = False  # onnx export
+    end2end = False
+    include_nms = False
+    concat = False
+
+    def __init__(self, nc=80, anchors=(), ch=()):  # detection layer
+        super(IDetect3, self).__init__()
+        self.nc = nc  # number of classes
+        self.no = nc + 5  # number of outputs per anchor
+        self.nl = len(anchors)  # number of detection layers
+        self.na = len(anchors[0]) // 2  # number of anchors
+        self.grid = [torch.zeros(1)] * self.nl  # init grid
+        a = torch.tensor(anchors).float().view(self.nl, -1, 2)
+        self.register_buffer('anchors', a)  # shape(nl,na,2)
+        self.register_buffer('anchor_grid', a.clone().view(self.nl, 1, -1, 1, 1, 2))  # shape(nl,1,na,1,1,2)
+        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+
+        self.ia = nn.ModuleList(ImplicitA(x) for x in ch)
+        self.im = nn.ModuleList(ImplicitM(self.no * self.na) for _ in ch)
+
+    def forward(self, x):
+        # x = x.copy()  # for profiling
+        z = []  # inference output
+        self.training |= self.export
+        for i in range(self.nl):
+            x[i] = self.m[i](self.ia[i](x[i]))  # conv
+            x[i] = self.im[i](x[i])
+            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+
+            if not self.training:  # inference
+                if self.grid[i].shape[2:4] != x[i].shape[2:4]:
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+
+                y = x[i].sigmoid()
+                y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(x[i].device)) * self.stride[i]  # xy
+                y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                z.append(y.view(bs, -1, self.no))
+
+        return x if self.training else (torch.cat(z, 1), x)
+
+    def fuseforward(self, x):
+        # x = x.copy()  # for profiling
+        z = []  # inference output
+        self.training |= self.export
+        for i in range(self.nl):
+            x[i] = self.m[i](x[i])  # conv
+            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+
+            if not self.training:  # inference
+                if self.grid[i].shape[2:4] != x[i].shape[2:4]:
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+
+                y = x[i].sigmoid()
+                if not torch.onnx.is_in_onnx_export():
+                    y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i]) * self.stride[i]  # xy
+                    y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                else:
+                    xy, wh, conf = y.split((2, 2, self.nc + 1), 4)  # y.tensor_split((2, 4, 5), 4)  # torch 1.8.0
+                    xy = xy * (2. * self.stride[i]) + (self.stride[i] * (self.grid[i] - 0.5))  # new xy
+                    wh = wh ** 2 * (4 * self.anchor_grid[i].data)  # new wh
+                    y = torch.cat((xy, wh, conf), 4)
+                z.append(y.view(bs, -1, self.no))
+
+        if self.training:
+            out = x
+        elif self.end2end:
+            out = torch.cat(z, 1)
+        elif self.include_nms:
+            z = self.convert(z)
+            out = (z,)
+        elif self.concat:
+            out = torch.cat(z, 1)
+        else:
+            out = (torch.cat(z, 1), x)
+
+        return out
+
+    def fuse(self):
+        print("IDetect.fuse")
+        # fuse ImplicitA and Convolution
+        for i in range(len(self.m)):
+            c1, c2, _, _ = self.m[i].weight.shape
+            c1_, c2_, _, _ = self.ia[i].implicit.shape
+            self.m[i].bias += torch.matmul(self.m[i].weight.reshape(c1, c2),
+                                           self.ia[i].implicit.reshape(c2_, c1_)).squeeze(1)
+
+        # fuse ImplicitM and Convolution
+        for i in range(len(self.m)):
+            c1, c2, _, _ = self.im[i].implicit.shape
+            self.m[i].bias *= self.im[i].implicit.reshape(c2)
+            self.m[i].weight *= self.im[i].implicit.transpose(0, 1)
+
+    @staticmethod
+    def _make_grid(nx=20, ny=20):
+        yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
+        return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
+
+    def convert(self, z):
+        z = torch.cat(z, 1)
+        box = z[:, :, :4]
+        conf = z[:, :, 4:5]
+        score = z[:, :, 5:]
+        score *= conf
+        convert_matrix = torch.tensor([[1, 0, 1, 0], [0, 1, 0, 1], [-0.5, 0, 0.5, 0], [0, -0.5, 0, 0.5]],
+                                      dtype=torch.float32,
+                                      device=z.device)
+        box @= convert_matrix
+        return (box, score)
 
 class PSA_p(nn.Module):
     def __init__(self, inplanes, planes, kernel_size=1, stride=1):
@@ -1199,15 +1311,17 @@ class PaFPNELAN_C2(nn.Module):
 class PaFPNELAN_Ghost_C2(nn.Module):
     def __init__(self,
                  # in_dims=[256, 512, 1024, 1024],
-                 out_dim=[128, 256, 512, 1024],
-                 in_dims=[64, 128, 256, 512],
+                 # out_dim=[128, 256, 512, 1024],
+                 # in_dims=[64, 128, 256, 512],
                  # out_dim=[64, 128, 256, 512],
+                 in_dims=[64, 128, 256],
+                 out_dim=[64, 128, 256],
 
                  act=True):
         super(PaFPNELAN_Ghost_C2, self).__init__()
         self.in_dims = in_dims
         self.out_dim = out_dim
-        c2, c3, c4, c5 = in_dims
+        c3, c4, c5 = in_dims        #c2, c3, c4, c5 = in_dims
         # top dwon
         ## P5 -> P4
         self.cv1 = GhostConv(c5, 256, k=1, act=act)
@@ -1293,6 +1407,102 @@ class PaFPNELAN_Ghost_C2(nn.Module):
 
         return c8, c16, c17, c20, c23, c26
 
+class PaFPNELAN_Lite(nn.Module):
+    def __init__(self, in_dims=[64, 128, 256], out_dims=[64, 128, 256], act=True):
+        super().__init__()
+        self.in_dims = in_dims
+        self.out_dims = out_dims
+
+        c3, c4, c5 = in_dims
+        o3, o4, o5 = out_dims
+
+        # Reduce channels to unified output dims using depthwise separable 1x1 convs
+        self.reduce_c5 = DepthSeperabelConv2d(c5, o5, kernel_size=1, act=act)
+        self.reduce_c4 = DepthSeperabelConv2d(c4, o4, kernel_size=1, act=act)
+        self.reduce_c3 = DepthSeperabelConv2d(c3, o3, kernel_size=1, act=act)
+
+        # Top-down fusion (only one block per level to keep light)
+        self.fuse_p4 = DepthSeperabelConv2d(o4 + o5, o4, act=act)
+        self.fuse_p3 = DepthSeperabelConv2d(o3 + o4, o3, act=act)
+
+    def forward(self, features):
+        # features = [c3, c4, c5]
+        c3, c4, c5 = features
+
+        # Channel reduction
+        p5 = self.reduce_c5(c5)
+        p4 = self.reduce_c4(c4)
+        p3 = self.reduce_c3(c3)
+
+        # Top-down pathway
+        p4 = self.fuse_p4(torch.cat([p4, F.interpolate(p5, size=p4.shape[-2:], mode="nearest")], dim=1))
+        p3 = self.fuse_p3(torch.cat([p3, F.interpolate(p4, size=p3.shape[-2:], mode="nearest")], dim=1))
+
+        return p3, p4, p5  # output as feature pyramid
+
+class PaFPNELAN_Ghost_C2_scaled(nn.Module):
+    def __init__(self, act=True, scale=1.0):
+        super().__init__()
+        base_in_dims = [64, 128, 256]  # from encoder: output1_0, output2_0, output2_cat
+        self.in_dims = [int(c * scale) for c in base_in_dims]
+        self.out_dims = [int(c * scale) for c in [128, 256, 512]]  # P3, P4, P5 outputs
+
+        c3, c4, c5 = self.in_dims
+
+        # Top-down pathway
+        self.SPPCSPC = GhostSPPCSPC(c5, self.out_dims[2])
+
+        self.cv1 = GhostConv(self.out_dims[2], self.out_dims[1] // 2, k=1, act=act)
+        self.cv2 = GhostConv(c4, self.out_dims[1] // 2, k=1, act=act)
+        self.head_elan_1 = ELANBlock_Head_Ghost(in_dim=self.out_dims[1],
+                                                out_dim=self.out_dims[1],
+                                                act=act)
+
+        self.cv3 = GhostConv(self.out_dims[1], self.out_dims[0] // 2, k=1, act=act)
+        self.cv4 = GhostConv(c3, self.out_dims[0] // 2, k=1, act=act)
+        self.head_elan_2 = ELANBlock_Head_Ghost(in_dim=self.out_dims[0],
+                                                out_dim=self.out_dims[0],
+                                                act=act)
+
+        # Bottom-up pathway
+        self.mp0 = DownSample_Head_Ghost(self.out_dims[0], act=act)
+        self.head_elan_3 = ELANBlock_Head_Ghost(in_dim=self.out_dims[1] * 2,
+                                                out_dim=self.out_dims[1],
+                                                act=act)
+
+        self.mp1 = DownSample_Head_Ghost(self.out_dims[1], act=act)
+        self.head_elan_4 = ELANBlock_Head_Ghost(in_dim=self.out_dims[2] * 2,
+                                                out_dim=self.out_dims[2],
+                                                act=act)
+
+    def forward(self, features):
+        c3, c4, c5 = features  # output1_0, output2_0, output2_cat
+
+        # Top-down
+        c5 = self.SPPCSPC(c5)
+
+        c6 = self.cv1(c5)
+        c7 = F.interpolate(c6, scale_factor=2.0, mode="nearest")
+        c8 = torch.cat([c7, self.cv2(c4)], dim=1)
+        c9 = self.head_elan_1(c8)
+
+        c10 = self.cv3(c9)
+        c11 = F.interpolate(c10, scale_factor=2.0, mode="nearest")
+        c12 = torch.cat([c11, self.cv4(c3)], dim=1)
+        c13 = self.head_elan_2(c12)
+
+        # Bottom-up
+        c14 = self.mp0(c13)
+        c15 = torch.cat([c14, c9], dim=1)
+        c16 = self.head_elan_3(c15)
+
+        c17 = self.mp1(c16)
+        c18 = torch.cat([c17, c5], dim=1)
+        c19 = self.head_elan_4(c18)
+
+        # You can decide which of these to return as feature pyramid
+        # return c9, c13, c13, c16, c19
+        return c13, c16, c19
 
 class Repconv_Block(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
@@ -1313,6 +1523,40 @@ class Repconv_Block(nn.Module):
         c30 = self.repconv_3(c5)  # P5
         out_feats = [c27, c28, c29, c30]  # [P2, P3, P4, P5]
         return out_feats
+
+class Repconv_Block_3(nn.Module):
+    def __init__(self, out_dim=[128, 256, 512]):
+        super(Repconv_Block_3, self).__init__()
+        # RepConv for each pyramid level
+        self.repconv_0 = RepConv(out_dim[0], out_dim[0], k=3, s=1, p=1)  # P3
+        self.repconv_1 = RepConv(out_dim[1], out_dim[1], k=3, s=1, p=1)  # P4
+        self.repconv_2 = RepConv(out_dim[2], out_dim[2], k=3, s=1, p=1)  # P5
+
+    def forward(self, x):
+        c3, c4, c5 = x  # P3, P4, P5 from the neck
+
+        p3_out = self.repconv_0(c3)
+        p4_out = self.repconv_1(c4)
+        p5_out = self.repconv_2(c5)
+
+        return [p3_out, p4_out, p5_out]
+
+class Repconv_Block_3_Lite(nn.Module):
+    def __init__(self, out_dim=[64, 128, 256], act=True):
+        super(Repconv_Block_3_Lite, self).__init__()
+        # DepthwiseSeparableConv for each pyramid level
+        self.conv_p3 = DepthSeperabelConv2d(out_dim[0], out_dim[0], kernel_size=3, stride=1, act=act)
+        self.conv_p4 = DepthSeperabelConv2d(out_dim[1], out_dim[1], kernel_size=3, stride=1, act=act)
+        self.conv_p5 = DepthSeperabelConv2d(out_dim[2], out_dim[2], kernel_size=3, stride=1, act=act)
+
+    def forward(self, x):
+        p3, p4, p5 = x  # output from neck (p3, p4, p5)
+
+        p3_out = self.conv_p3(p3)
+        p4_out = self.conv_p4(p4)
+        p5_out = self.conv_p5(p5)
+
+        return [p3_out, p4_out, p5_out]
 
 
 class Repconv_Block_NoC2(nn.Module):

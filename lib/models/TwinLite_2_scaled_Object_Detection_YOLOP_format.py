@@ -14,8 +14,8 @@ from lib.core.evaluate import SegmentationMetric
 from lib.utils.utils import time_synchronized
 from lib.models.common_yolopv3 import GhostConv, RepConv, PaFPNELAN_C2, Conv, seg_head, PSA_p
 from lib.models.common_yolopv3 import ELANBlock_Head, FPN_C5, FPN_C2, ELANBlock_Head_Ghost, Repconv_Block, ELANNet, \
-    PaFPNELAN_Ghost_C2, IDetect, LitePAN
-from lib.models.TwinLite_2_scaled_Object_Detection import ESPNet2_Encoder_scaledExtended, MHGDTwinLiteNet2Scaled, UPx2_scaled
+    PaFPNELAN_Ghost_C2, IDetect, LitePAN, PaFPNELAN_Ghost_C2_scaled, Repconv_Block_3, PaFPNELAN_Lite, Repconv_Block_3_Lite
+from lib.models.TwinLite_2_scaled_Object_Detection import ESPNet2_Encoder_scaledExtended, MHGDTwinLiteNet2Scaled, UPx2_scaled, ESPNet2_Encoder_scaledExtendedDWS
 # from torchsummary import summary
 
 # TwinLiteNet2Scaled = [
@@ -38,19 +38,18 @@ TwinLiteNet2Scaled = [
     [3, 5, 6],
 
     # Backbone
-    [-1, ESPNet2_Encoder_scaledExtended, [5, 3, 1.0]],
+    [-1, ESPNet2_Encoder_scaledExtendedDWS, [3, 2, 1.0]],
 
     # Neck edw me to litepan na ksanadw me to -1 h to 0 ti ginetai
-    [-1, PaFPNELAN_Ghost_C2, []],  # Output of encoder must be a tuple/list of C3, C4, C5
+    [-1, PaFPNELAN_Lite, []],  # Output of encoder must be a tuple/list of C3, C4, C5
 
     # Repconv_Block
-    [-1, Repconv_Block, []],
+    [-1, Repconv_Block_3_Lite, []],
 
     # Detection Head
     [-1, IDetect, [1, [[4.15629, 11.41984, 5.94761, 16.46950, 8.18673, 23.52688],
                        [12.04416, 29.51737, 16.35089, 41.95507, 24.17928, 57.18741],
-                       [33.29597, 78.16243, 47.86408, 108.28889, 36.33312, 189.21414],
-                       [73.09806, 144.64581, 101.18080, 253.37000, 136.02821, 408.82248]], [128, 256, 512, 1024]]],
+                       [33.29597, 78.16243, 47.86408, 108.28889, 36.33312, 189.21414]], [128, 256, 512]]],
 
     # DA & LLS Heads
     [0, MHGDTwinLiteNet2Scaled, [1, 64]],
@@ -92,7 +91,7 @@ class MCnet(nn.Module):
         # set stride、anchor for detector
         Detector = self.model[self.detector_index]  # detector
         if isinstance(Detector, IDetect):
-            s = 512  # 2x min stride auto thelei psaksimoooooo. tha mporouse na ginei meleti edwwwwww
+            s = 128  # 2x min stride auto thelei psaksimoooooo. tha mporouse na ginei meleti edwwwwww
             with torch.no_grad():
                 model_out = self.forward(torch.zeros(1, 3, s, s))
                 # detects = model_out[0]

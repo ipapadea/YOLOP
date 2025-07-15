@@ -6,7 +6,7 @@ from torch.nn import Module, Conv2d, Parameter, Softmax
 from lib.models.efficientFCN.encoding.models.efficientFCN import MHGDTwinLiteNet2Scaled, MultiHGDecoderTwinLiteNet2, MultiHGDModuleTwinLiteNetv2, \
     MHGDTwinLiteNet2ScaledObjectDetection, MultiHGDModuleTwinLiteNetv2ScaledObjectDetection, MultiHGDecoderTwinLiteNet2HalfCodewords
 from lib.models.common_yolopv3 import ELANBlock_Head, FPN_C5, FPN_C2, ELANBlock_Head_Ghost, Repconv_Block, ELANNet, \
-    PaFPNELAN_Ghost_C2, IDetect, RepConv, Repconv_Block
+    PaFPNELAN_Ghost_C2, IDetect, RepConv, Repconv_Block, GhostConv, GhostBottleneck, DepthSeperabelConv2d
 
 class PAM_Module_output(Module):
     """ Position attention module"""
@@ -537,61 +537,182 @@ class ESPNet2_Encoder_scaled(nn.Module):
 
         return (output1_0, output2_0, output2_cat), decoder_output
 
+# class ESPNet2_Encoder_scaledExtended(nn.Module):
+#     '''
+#     This class defines the ESPNet-C network in the paper
+#     '''
+#
+#     def __init__(self, p=5, q=3, scale=1.0):
+#         '''
+#         :param classes: number of classes in the dataset. Default is 20 for the cityscapes
+#         :param p: depth multiplier
+#         :param q: depth multiplier
+#         '''
+#         super().__init__()
+#         self.level1 = CBR(3, int(16 * scale), 3, 2)
+#         self.sample1 = InputProjectionA(1)
+#         self.sample2 = InputProjectionA(2)
+#
+#         self.b1 = CBR(int(16 * scale) + 3, int(19 * scale), 3)
+#         # self.b1 = CBR(int((16+3) * scale), int(19 * scale), 3)
+#
+#         # self.level2_0 = DownSamplerB(int(16 * scale) + 3, int(64 * scale))
+#         self.level2_0 = DownSamplerB(int((16 + 3) * scale), int(64 * scale))
+#
+#         self.level2 = nn.ModuleList()
+#         for i in range(0, p):
+#             self.level2.append(DilatedParllelResidualBlockB(int(64 * scale), int(64 * scale)))
+#         self.b2 = CBR(int(128 * scale) + 3, int(131 * scale), 3)
+#         # self.b2 = CBR(int((128+3) * scale) , int(131 * scale), 3)
+#         self.level3_0 = DownSamplerB(int((128 + 3) * scale), int(128 * scale))
+#         self.level3 = nn.ModuleList()
+#         for i in range(0, q):
+#             self.level3.append(DilatedParllelResidualBlockB(int(128 * scale), int(128 * scale)))
+#         # self.b3 = CBR(256,32,3) # to evgala gia na mpei o decoder
+#         self.c5_down = CBR(int(256 * scale), int(256 * scale), kSize=3, stride=2) # meiwsi layers=meiwsi parametrwn
+#         # self.c6_down = CBR(int(256 * scale), int(512 * scale), kSize=3, stride=2)
+#         # self.decoder = MHGDTwinLiteNet2Scaled(scale=scale, in_channels=int(64 * scale), out_channels=int(32 * scale),
+#         #                                       num_center=int(64 * scale), norm_layer=nn.BatchNorm2d)
+#
+#     def forward(self, input):
+#         '''
+#         :param input: Receives the input RGB image
+#         :return: the transformed feature map with spatial dimensions 1/8th of the input image
+#         '''
+#         # print("input shape: ", input.shape)
+#         output0 = self.level1(input)
+#         # print("output0 shape: ", output0.shape)
+#         inp1 = self.sample1(input)
+#         # print("inp1 shape: ", inp1.shape)
+#         inp2 = self.sample2(input)
+#         # print("inp2 shape: ", inp2.shape)
+#
+#         output0_cat = self.b1(torch.cat([output0, inp1], 1))
+#         # print("output0_cat shape: ", output0_cat.shape)
+#
+#         output1_0 = self.level2_0(output0_cat)  # down-sampled
+#         # print("output1_0 shape: ", output1_0.shape)
+#
+#         for i, layer in enumerate(self.level2):
+#             if i == 0:
+#                 output1 = layer(output1_0)
+#             else:
+#                 output1 = layer(output1)
+#
+#         output1_cat = self.b2(torch.cat([output1, output1_0, inp2], 1))
+#         output2_0 = self.level3_0(output1_cat)  # down-sampled
+#         for i, layer in enumerate(self.level3):
+#             if i == 0:
+#                 output2 = layer(output2_0)
+#             else:
+#                 output2 = layer(output2)
+#         cat_ = torch.cat([output2_0, output2], 1)
+#         # print("output of cat_ shape: ", cat_.shape)
+#
+#         output2_cat = self.c5_down(cat_)
+#         # n6 = self.c6_down(output2_cat)
+#
+#         # print("output of output2_cat shape: ", output2_cat.shape)
+#         # print("input of multihgd shape: ", cat_.shape)
+#
+#         ### prosoxi edw to evgala gia na epistrepsw sto original
+#         # da_seg_feat, ll_seg_feat = self.decoder((output0_cat, output1_cat, cat_))  # eksodos tou multiHGD
+#         # na balw edw ena breakpoint na doume ti resolutions exoun auta na tsekarw oti ontws
+#         # dinw ta swsta
+#         # episis edw na dokimasw kai output2 anti gia output2_0
+#         # return [output1_0, output2_0, output2_cat, n6, da_seg_feat, ll_seg_feat]
+#         # return (output1_0, output2_0, output2_cat, n6), (output0_cat, output1_cat, cat_)
+#         return (output1_0, output2_0, output2_cat), (output0_cat, output1_cat, output2_cat)
 class ESPNet2_Encoder_scaledExtended(nn.Module):
-    '''
-    This class defines the ESPNet-C network in the paper
-    '''
-
     def __init__(self, p=5, q=3, scale=1.0):
-        '''
-        :param classes: number of classes in the dataset. Default is 20 for the cityscapes
-        :param p: depth multiplier
-        :param q: depth multiplier
-        '''
+        super().__init__()
+        ch16 = int(16 * scale)
+        ch19 = int(19 * scale)
+        ch64 = int(64 * scale)
+        ch128 = int(128 * scale)
+        ch256 = int(256 * scale)
+        ch131 = int(131 * scale)
+
+        # Input Stem
+        self.level1 = GhostConv(3, ch16, k=3, s=2)  # was CBR
+        self.sample1 = InputProjectionA(1)
+        self.sample2 = InputProjectionA(2)
+
+        self.b1 = GhostConv(ch16 + 3, ch19, k=3, s=1)  # was CBR
+
+        self.level2_0 = DownSamplerB(ch19, ch64)
+
+        self.level2 = nn.ModuleList([
+            GhostBottleneck(ch64, ch64, k=3, s=1) for _ in range(p)
+        ])
+
+        self.b2 = GhostConv(ch64 * 2 + 3, ch131, k=3, s=1)  # was CBR
+
+        self.level3_0 = DownSamplerB(ch131, ch128)
+
+        self.level3 = nn.ModuleList([
+            GhostBottleneck(ch128, ch128, k=3, s=1) for _ in range(q)
+        ])
+
+        self.c5_down = GhostConv(ch128 * 2, ch256, k=3, s=2)  # was CBR
+
+    def forward(self, x):
+        output0 = self.level1(x)
+        inp1 = self.sample1(x)
+        inp2 = self.sample2(x)
+        print("output0:", output0.shape)  # should be [1, 16, H, W]
+        print("inp1:", inp1.shape)  # should be [1, 3, H, W]
+
+        output0_cat = self.b1(torch.cat([output0, inp1], 1))
+
+        output1_0 = self.level2_0(output0_cat)
+        output1 = output1_0
+        for layer in self.level2:
+            output1 = layer(output1)
+
+        output1_cat = self.b2(torch.cat([output1, output1_0, inp2], 1))
+
+        output2_0 = self.level3_0(output1_cat)
+        output2 = output2_0
+        for layer in self.level3:
+            output2 = layer(output2)
+
+        cat_ = torch.cat([output2_0, output2], dim=1)
+        output2_cat = self.c5_down(cat_)
+
+        return (output1_0, output2_0, output2_cat), (output0_cat, output1_cat, output2_cat)
+
+class ESPNet2_Encoder_scaledExtendedDWS(nn.Module):
+    def __init__(self, p=5, q=3, scale=1.0):
         super().__init__()
         self.level1 = CBR(3, int(16 * scale), 3, 2)
         self.sample1 = InputProjectionA(1)
         self.sample2 = InputProjectionA(2)
 
         self.b1 = CBR(int(16 * scale) + 3, int(19 * scale), 3)
-        # self.b1 = CBR(int((16+3) * scale), int(19 * scale), 3)
-
-        # self.level2_0 = DownSamplerB(int(16 * scale) + 3, int(64 * scale))
         self.level2_0 = DownSamplerB(int((16 + 3) * scale), int(64 * scale))
 
         self.level2 = nn.ModuleList()
         for i in range(0, p):
-            self.level2.append(DilatedParllelResidualBlockB(int(64 * scale), int(64 * scale)))
+            self.level2.append(DepthSeperabelConv2d(int(64 * scale), int(64 * scale)))
+
         self.b2 = CBR(int(128 * scale) + 3, int(131 * scale), 3)
-        # self.b2 = CBR(int((128+3) * scale) , int(131 * scale), 3)
         self.level3_0 = DownSamplerB(int((128 + 3) * scale), int(128 * scale))
+
         self.level3 = nn.ModuleList()
         for i in range(0, q):
-            self.level3.append(DilatedParllelResidualBlockB(int(128 * scale), int(128 * scale)))
-        # self.b3 = CBR(256,32,3) # to evgala gia na mpei o decoder
+            self.level3.append(DepthSeperabelConv2d(int(128 * scale), int(128 * scale)))
+
         self.c5_down = CBR(int(256 * scale), int(256 * scale), kSize=3, stride=2)
-        self.c6_down = CBR(int(256 * scale), int(512 * scale), kSize=3, stride=2)
-        # self.decoder = MHGDTwinLiteNet2Scaled(scale=scale, in_channels=int(64 * scale), out_channels=int(32 * scale),
-        #                                       num_center=int(64 * scale), norm_layer=nn.BatchNorm2d)
+        # self.c6_down = CBR(int(256 * scale), int(512 * scale), kSize=3, stride=2)
 
     def forward(self, input):
-        '''
-        :param input: Receives the input RGB image
-        :return: the transformed feature map with spatial dimensions 1/8th of the input image
-        '''
-        # print("input shape: ", input.shape)
         output0 = self.level1(input)
-        # print("output0 shape: ", output0.shape)
         inp1 = self.sample1(input)
-        # print("inp1 shape: ", inp1.shape)
         inp2 = self.sample2(input)
-        # print("inp2 shape: ", inp2.shape)
 
         output0_cat = self.b1(torch.cat([output0, inp1], 1))
-        # print("output0_cat shape: ", output0_cat.shape)
-
-        output1_0 = self.level2_0(output0_cat)  # down-sampled
-        # print("output1_0 shape: ", output1_0.shape)
+        output1_0 = self.level2_0(output0_cat)
 
         for i, layer in enumerate(self.level2):
             if i == 0:
@@ -600,30 +721,18 @@ class ESPNet2_Encoder_scaledExtended(nn.Module):
                 output1 = layer(output1)
 
         output1_cat = self.b2(torch.cat([output1, output1_0, inp2], 1))
-        output2_0 = self.level3_0(output1_cat)  # down-sampled
+        output2_0 = self.level3_0(output1_cat)
+
         for i, layer in enumerate(self.level3):
             if i == 0:
                 output2 = layer(output2_0)
             else:
                 output2 = layer(output2)
+
         cat_ = torch.cat([output2_0, output2], 1)
-        # print("output of cat_ shape: ", cat_.shape)
-
         output2_cat = self.c5_down(cat_)
-        n6 = self.c6_down(output2_cat)
 
-        # print("output of output2_cat shape: ", output2_cat.shape)
-        # print("input of multihgd shape: ", cat_.shape)
-
-        ### prosoxi edw to evgala gia na epistrepsw sto original
-        # da_seg_feat, ll_seg_feat = self.decoder((output0_cat, output1_cat, cat_))  # eksodos tou multiHGD
-        # na balw edw ena breakpoint na doume ti resolutions exoun auta na tsekarw oti ontws
-        # dinw ta swsta
-        # episis edw na dokimasw kai output2 anti gia output2_0
-        # return [output1_0, output2_0, output2_cat, n6, da_seg_feat, ll_seg_feat]
-        return (output1_0, output2_0, output2_cat, n6), (output0_cat, output1_cat, cat_)
-
-
+        return (output1_0, output2_0, output2_cat), (output0_cat, output1_cat, output2_cat)
 
 class TwinLiteNet_2_scaled__(nn.Module):
     def __init__(self, p=2, q=3, scale=1.0):
