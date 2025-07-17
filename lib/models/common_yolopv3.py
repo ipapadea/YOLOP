@@ -1312,16 +1312,16 @@ class PaFPNELAN_Ghost_C2(nn.Module):
     def __init__(self,
                  # in_dims=[256, 512, 1024, 1024],
                  # out_dim=[128, 256, 512, 1024],
-                 # in_dims=[64, 128, 256, 512],
-                 # out_dim=[64, 128, 256, 512],
-                 in_dims=[64, 128, 256],
-                 out_dim=[64, 128, 256],
+                 in_dims=[64, 128, 256, 512],
+                 out_dim=[64, 128, 256, 512],
+                 # in_dims=[64, 128, 256],
+                 # out_dim=[64, 128, 256],
 
                  act=True):
         super(PaFPNELAN_Ghost_C2, self).__init__()
         self.in_dims = in_dims
         self.out_dim = out_dim
-        c3, c4, c5 = in_dims        #c2, c3, c4, c5 = in_dims
+        c2, c3, c4, c5 = in_dims
         # top dwon
         ## P5 -> P4
         self.cv1 = GhostConv(c5, 256, k=1, act=act)
@@ -1506,7 +1506,8 @@ class PaFPNELAN_Ghost_C2_scaled(nn.Module):
 
 class Repconv_Block(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
-    def __init__(self, out_dim=[128, 256, 512, 1024]):
+    # def __init__(self, out_dim=[128, 256, 512, 1024])
+    def __init__(self, out_dim=[64, 128, 256, 512]):
         super(Repconv_Block, self).__init__()
         # RepConv
         self.repconv_0 = RepConv(64, out_dim[0], k=3, s=1, p=1)

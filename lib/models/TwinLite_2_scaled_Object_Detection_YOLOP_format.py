@@ -38,18 +38,19 @@ TwinLiteNet2Scaled = [
     [3, 5, 6],
 
     # Backbone
-    [-1, ESPNet2_Encoder_scaledExtendedDWS, [3, 2, 1.0]],
+    [-1, ESPNet2_Encoder_scaledExtendedDWS, [5, 3, 1.0]],
 
     # Neck edw me to litepan na ksanadw me to -1 h to 0 ti ginetai
-    [-1, PaFPNELAN_Lite, []],  # Output of encoder must be a tuple/list of C3, C4, C5
+    [-1, PaFPNELAN_Ghost_C2, []],  # Output of encoder must be a tuple/list of C3, C4, C5
 
     # Repconv_Block
-    [-1, Repconv_Block_3_Lite, []],
+    [-1, Repconv_Block, []],
 
     # Detection Head
     [-1, IDetect, [1, [[4.15629, 11.41984, 5.94761, 16.46950, 8.18673, 23.52688],
                        [12.04416, 29.51737, 16.35089, 41.95507, 24.17928, 57.18741],
-                       [33.29597, 78.16243, 47.86408, 108.28889, 36.33312, 189.21414]], [64, 128, 256]]],
+                       [33.29597, 78.16243, 47.86408, 108.28889, 36.33312, 189.21414],
+                       [73.09806, 144.64581, 101.18080, 253.37000, 136.02821, 408.82248]], [64, 128, 256, 512]]],
 
     # DA & LLS Heads
     [0, MHGDTwinLiteNet2Scaled, [1, 64]],
