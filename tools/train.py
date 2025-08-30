@@ -33,7 +33,7 @@ from lib.utils.utils import get_optimizer
 from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
 from lib.utils import run_anchor
-
+import random
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Multitask network')
@@ -50,8 +50,7 @@ def parse_args():
                         default='')
     parser.add_argument('--logDir',
                         help='log directory',
-                        type=str,
-                        default='runs_twinlitenet_with_yolopv3/')
+                        type=str)
     parser.add_argument('--dataDir',
                         help='data directory',
                         type=str,
@@ -69,7 +68,9 @@ def parse_args():
 
     return args
 
-
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.deterministic = True
 def main():
     # set all the configurations
     args = parse_args()
@@ -116,7 +117,9 @@ def main():
         torch.cuda.set_device(args.local_rank)
         device = torch.device('cuda', args.local_rank)
         dist.init_process_group(backend='nccl', init_method='env://')  # distributed backend
-    
+    else:
+        device = select_device(logger, 'cuda')
+
     print("load model to device")
     model = get_net(cfg).to(device)
     # print("load finished")
@@ -134,15 +137,29 @@ def main():
     best_model = False
     last_epoch = -1
 
-    Encoder_para_idx = [str(i) for i in range(0, 17)]
-    Det_Head_para_idx = [str(i) for i in range(17, 25)]
-    Da_Seg_Head_para_idx = [str(i) for i in range(25, 34)]
-    Ll_Seg_Head_para_idx = [str(i) for i in range(34,43)]
+    # Encoder_para_idx = [str(i) for i in range(0, 17)]
+    # Det_Head_para_idx = [str(i) for i in range(17, 25)]
+    # Da_Seg_Head_para_idx = [str(i) for i in range(25, 34)]
+    # Ll_Seg_Head_para_idx = [str(i) for i in range(34,43)]
+
+    Encoder_para_idx = ["0"]
+    Det_Head_para_idx = ["1", "2"]
+    Seg_Decoder_para_idx = ["3"]
+    Da_Seg_Head_para_idx = ["4"]
+    Ll_Seg_Head_para_idx = ["5"]
 
     lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
                    (1 - cfg.TRAIN.LRF) + cfg.TRAIN.LRF  # cosine
     lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
     begin_epoch = cfg.TRAIN.BEGIN_EPOCH
+    seed = 42
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    checkpoint_file = "from_scratch_amp_disabled/BddDataset/from_scratch_amp_disabled_2025-08-26-17-58/epoch-132.pth"
 
     if rank in [-1, 0]:
         checkpoint_file = os.path.join(
@@ -178,7 +195,7 @@ def main():
             checkpoint = torch.load(checkpoint_file)
             begin_epoch = checkpoint['epoch']
             # best_perf = checkpoint['perf']
-            last_epoch = checkpoint['epoch']
+            # last_epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['state_dict'])
             # optimizer = get_optimizer(cfg, model)
             optimizer.load_state_dict(checkpoint['optimizer'])
@@ -207,7 +224,7 @@ def main():
         if cfg.TRAIN.ENC_SEG_ONLY:  # Only train encoder and two segmentation branchs
             logger.info('freeze Det head...')
             for k, v in model.named_parameters():
-                v.requires_grad = True  # train all layers 
+                v.requires_grad = True  # train all layers
                 if k.split(".")[1] in Det_Head_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
@@ -245,7 +262,8 @@ def main():
     # # DDP mode
     if rank != -1:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank,find_unused_parameters=True)
-
+    # else:
+    #     model = torch.nn.DataParallel(model)
 
     # assign model params
     model.gr = 1.0

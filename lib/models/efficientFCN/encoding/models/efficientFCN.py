@@ -1,6 +1,6 @@
 ###########################################################################
-# Created by: Hang Zhang 
-# Email: zhang.hang@rutgers.edu 
+# Created by: Hang Zhang
+# Email: zhang.hang@rutgers.edu
 # Copyright (c) 2017
 ###########################################################################
 
@@ -12,9 +12,10 @@ import torch.nn.functional as F
 import math
 from .base import BaseNet
 from .fcn import FCNHead
-#from ..nn import SyncBatchNorm, Encoding, Mean, GlobalAvgPool2d
+# from ..nn import SyncBatchNorm, Encoding, Mean, GlobalAvgPool2d
 from ..nn import Mean, GlobalAvgPool2d
 import torch.nn.utils.prune as prune
+
 
 def apply_pruning(module, amount=0.5, method='ln_structured', n=2, dim=0):
     if isinstance(module, nn.Conv2d):
@@ -24,6 +25,8 @@ def apply_pruning(module, amount=0.5, method='ln_structured', n=2, dim=0):
             prune.l1_unstructured(module, name='weight', amount=amount)
         # Remove reparameterization to make pruning permanent
         prune.remove(module, 'weight')
+
+
 def apply_pruning(module, amount=0.5, method='ln_structured', n=2, dim=0):
     if isinstance(module, nn.Conv2d):
         if method == 'ln_structured':
@@ -32,20 +35,22 @@ def apply_pruning(module, amount=0.5, method='ln_structured', n=2, dim=0):
             prune.l1_unstructured(module, name='weight', amount=amount)
         # Remove reparameterization to make pruning permanent
         prune.remove(module, 'weight')
+
 
 __all__ = ['efficientFCN', 'HGDModule', 'get_efficientfcn', 'get_efficientfcn_resnet50_pcontext',
            'get_efficientfcn_resnet101_pcontext', 'get_efficientfcn_resnet50_citys',
            'get_efficientfcn_resnet101_citys', 'get_efficientfcn_resnet50_ade',
            'get_efficientfcn_resnet101_ade']
 
+
 class efficientFCN(BaseNet):
     def __init__(self, nclass, backbone, num_center=256, aux=True, norm_layer=None, **kwargs):
         super(efficientFCN, self).__init__(nclass, backbone, aux, dilated=False,
-                                     norm_layer=torch.nn.BatchNorm2d, **kwargs)
+                                           norm_layer=torch.nn.BatchNorm2d, **kwargs)
         self.head = HGDecoder(2048, 2, num_center=num_center,
-                            norm_layer=norm_layer,
-                            up_kwargs=self._up_kwargs)
-        #if aux:
+                              norm_layer=norm_layer,
+                              up_kwargs=self._up_kwargs)
+        # if aux:
         #    self.auxlayer = FCNHead(1024, nclass, norm_layer=norm_layer)
 
     def forward(self, x):
@@ -54,8 +59,8 @@ class efficientFCN(BaseNet):
 
         x = list(self.head(*features))
         x[0] = F.interpolate(x[0], imsize, **self._up_kwargs)
-        #x[2] = F.interpolate(x[2], imsize, **self._up_kwargs)
-        #if self.aux:
+        # x[2] = F.interpolate(x[2], imsize, **self._up_kwargs)
+        # if self.aux:
         #    #auxout = self.auxlayer(features[2])
         #    #auxout = F.interpolate(auxout, imsize, **self._up_kwargs)
         #    x[1] = F.interpolate(x[1], imsize, **self._up_kwargs)
@@ -71,23 +76,23 @@ class HGDModule(nn.Module):
         self.in_channels = in_channels
         self.center_channels = center_channels
         self.out_channels = out_channels
-        self.conv_cat= nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),
+        self.conv_cat = nn.Sequential(
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
-        self.conv_center= nn.Sequential(
-            nn.Conv2d(in_channels*3, center_channels, 1, bias=False),
-            #norm_layer(out_channels),
-            #nn.ReLU(inplace=True),
-            #nn.Conv2d(out_channels, center_channels, 1, bias=False),
+        self.conv_center = nn.Sequential(
+            nn.Conv2d(in_channels * 3, center_channels, 1, bias=False),
+            # norm_layer(out_channels),
+            # nn.ReLU(inplace=True),
+            # nn.Conv2d(out_channels, center_channels, 1, bias=False),
             norm_layer(center_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(center_channels, center_channels, 1, bias=False),
             norm_layer(center_channels))
-        self.norm_center= nn.Sequential(
+        self.norm_center = nn.Sequential(
             nn.Softmax(2))
         self.conv_affinity0 = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels , 1, bias=False),
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity1 = nn.Sequential(
@@ -98,12 +103,12 @@ class HGDModule(nn.Module):
             norm_layer(center_channels),
             nn.ReLU(inplace=True))
         self.conv_up = nn.Sequential(
-            nn.Conv2d(2*out_channels, out_channels, 1, bias=False),
+            nn.Conv2d(2 * out_channels, out_channels, 1, bias=False),
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.avgpool0 = nn.AdaptiveAvgPool2d(1)
 
-        #for m in self.modules():
+        # for m in self.modules():
         #    if isinstance(m, nn.Conv2d):
         #        n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
         #        m.weight.data.normal_(0, math.sqrt(2. / n))
@@ -112,24 +117,23 @@ class HGDModule(nn.Module):
         #        m.bias.data.zero_()
 
     def forward(self, x, guide1, guide2):
-        n, c, h, w = x.size() # 512,12,20
-        n1, c1, h1, w1 = guide1.size() # 512,24,40
-        n2, c2, h2, w2 = guide2.size() # 512, 48, 80
+        n, c, h, w = x.size()  # 512,12,20
+        n1, c1, h1, w1 = guide1.size()  # 512,24,40
+        n2, c2, h2, w2 = guide2.size()  # 512, 48, 80
         x_up0 = F.interpolate(x, size=(h2, w2), mode='bilinear', align_corners=True)  # 512, 48, 80
         x_up1 = F.interpolate(guide1, size=(h2, w2), mode='bilinear', align_corners=True)  # 512, 48,80
         guide1_down = F.interpolate(guide1, size=(h, w), mode='bilinear', align_corners=True)
         guide2_down = F.interpolate(guide2, size=(h, w), mode='bilinear', align_corners=True)
 
-        x_cat = torch.cat([guide2_down, guide1_down, x], 1) #m32
+        x_cat = torch.cat([guide2_down, guide1_down, x], 1)  # m32
         f_cat = self.conv_cat(x_cat)  # Base Feature Maps - out_channels = 1024
         f_center = self.conv_center(x_cat)  # Spatial Weighting Maps - center_channels = 256
-        f_cat = f_cat.view(n, self.out_channels, h*w)  # n x out_channels x 240
-        #f_x = x_cat.view(n, 2*c, h*w)
-        f_center_norm = f_center.view(n, self.center_channels, h*w)  # n x center_channels x 240
+        f_cat = f_cat.view(n, self.out_channels, h * w)  # n x out_channels x 240
+        # f_x = x_cat.view(n, 2*c, h*w)
+        f_center_norm = f_center.view(n, self.center_channels, h * w)  # n x center_channels x 240
         f_center_norm = self.norm_center(f_center_norm)  # Softmax
-        #n x * in_channels x center_channels
+        # n x * in_channels x center_channels
         x_center = f_cat.bmm(f_center_norm.transpose(1, 2))  # n x out_channels x center_channels
-        
 
         ########################################
         f_cat = f_cat.view(n, self.out_channels, h, w)
@@ -137,7 +141,7 @@ class HGDModule(nn.Module):
         value_avg = f_cat_avg.repeat(1, 1, h2, w2)  # n x out_channels x h2 x w2
 
         ###################################
-        #f_affinity = self.conv_affinity(guide_cat)
+        # f_affinity = self.conv_affinity(guide_cat)
         guide_cat = torch.cat([guide2, x_up1, x_up0], 1)  # m8 - n x 3*in_channels x h2 x w2 (1536x48x80)
         guide_cat_conv = self.conv_affinity0(guide_cat)  # G - n x out_channels x h2 x w2
         guide_cat_value_avg = guide_cat_conv + value_avg  # n x out_channels x h2 x w2
@@ -145,7 +149,7 @@ class HGDModule(nn.Module):
         n_aff, c_ff, h_aff, w_aff = f_affinity.size()
         f_affinity = f_affinity.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
         norm_aff = ((self.center_channels) ** -.5)
-        #x_up = norm_aff * x_center.bmm(f_affinity.transpose(1, 2))
+        # x_up = norm_aff * x_center.bmm(f_affinity.transpose(1, 2))
         x_up = norm_aff * x_center.bmm(f_affinity)  # n x out_channels x h2*w2
         x_up = x_up.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde -  n x out_channels x h2 x w2
         x_up_cat = torch.cat([x_up, guide_cat_conv], 1)  # f_8_hat
@@ -246,7 +250,8 @@ class MultiHGDModule(nn.Module):
         guide_cat_conv_lane = self.conv_affinity0_lane(guide_cat)  # G_lane - n x out_channels x h2 x w2
         guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg  # n x out_channels x h2 x w2
         guide_cat_value_avg_lane = guide_cat_conv_lane + value_avg  # n x out_channels x h2 x w2
-        f_affinity_drivable = self.conv_affinity1_drivable(guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
+        f_affinity_drivable = self.conv_affinity1_drivable(
+            guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
         f_affinity_lane = self.conv_affinity1_lane(guide_cat_value_avg_lane)  # W_lane - n x center_channels x h2 x w2
         n_aff, c_ff, h_aff, w_aff = f_affinity_lane.size()
         f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
@@ -255,7 +260,8 @@ class MultiHGDModule(nn.Module):
         # x_up = norm_aff * x_center.bmm(f_affinity.transpose(1, 2))
         x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)  # n x out_channels x h2*
         x_up_lane = norm_aff * x_center.bmm(f_affinity_lane)  # n x out_channels x h2*w2
-        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff,
+                                           w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
         x_up_lane = x_up_lane.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_lane -  n x out_channels x h2 x w2
         x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)  # f_8_hat_drivable
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)  # f_8_hat_lane
@@ -272,11 +278,11 @@ class MultiHGDModuleTwinLiteNetv2(nn.Module):
         self.center_channels = center_channels
         self.out_channels = out_channels
         self.conv_cat = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_center = nn.Sequential(
-            nn.Conv2d(in_channels*3, center_channels, 1, bias=False), # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, center_channels, 1, bias=False),  # in_channels * 3 evala 211
             # norm_layer(out_channels),
             # nn.ReLU(inplace=True),
             # nn.Conv2d(out_channels, center_channels, 1, bias=False),
@@ -287,11 +293,11 @@ class MultiHGDModuleTwinLiteNetv2(nn.Module):
         self.norm_center = nn.Sequential(
             nn.Softmax(2))
         self.conv_affinity0_drivable = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity0_lane = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity1_drivable = nn.Sequential(
@@ -357,7 +363,8 @@ class MultiHGDModuleTwinLiteNetv2(nn.Module):
         guide_cat_conv_lane = self.conv_affinity0_lane(guide_cat)  # G_lane - n x out_channels x h2 x w2
         guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg  # n x out_channels x h2 x w2
         guide_cat_value_avg_lane = guide_cat_conv_lane + value_avg  # n x out_channels x h2 x w2
-        f_affinity_drivable = self.conv_affinity1_drivable(guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
+        f_affinity_drivable = self.conv_affinity1_drivable(
+            guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
         f_affinity_lane = self.conv_affinity1_lane(guide_cat_value_avg_lane)  # W_lane - n x center_channels x h2 x w2
         n_aff, c_ff, h_aff, w_aff = f_affinity_lane.size()
         f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
@@ -366,7 +373,8 @@ class MultiHGDModuleTwinLiteNetv2(nn.Module):
         # x_up = norm_aff * x_center.bmm(f_affinity.transpose(1, 2))
         x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)  # n x out_channels x h2*
         x_up_lane = norm_aff * x_center.bmm(f_affinity_lane)  # n x out_channels x h2*w2
-        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff,
+                                           w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
         x_up_lane = x_up_lane.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_lane -  n x out_channels x h2 x w2
         x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)  # f_8_hat_drivable
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)  # f_8_hat_lane
@@ -392,15 +400,16 @@ class MultiHGDecoderTwinLiteNet2ObjectDetectionSingleTask(nn.Module):
             norm_layer(64),
             nn.ReLU(inplace=True))
         self.conv30 = nn.Sequential(
-           nn.Conv2d(19, 64, 1, padding=0, bias=False),
-           norm_layer(64),
-           nn.ReLU(inplace=True))
+            nn.Conv2d(19, 64, 1, padding=0, bias=False),
+            norm_layer(64),
+            nn.ReLU(inplace=True))
 
         self.num_center = num_center
-        self.hgdmodule0 = MultiHGDModuleObjectDetectionTwinLiteNetv2SingleTask(in_channels=64, center_channels=192, out_channels=32, norm_layer=norm_layer)#, self.num_center,out_channels = 32, norm_layer=norm_layer)
+        self.hgdmodule0 = MultiHGDModuleObjectDetectionTwinLiteNetv2SingleTask(in_channels=64, center_channels=192,
+                                                                               out_channels=32,
+                                                                               norm_layer=norm_layer)  # , self.num_center,out_channels = 32, norm_layer=norm_layer)
 
     def forward(self, *inputs):
-
         feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -418,11 +427,11 @@ class MultiHGDModuleObjectDetectionTwinLiteNetv2SingleTask(nn.Module):
         self.center_channels = center_channels
         self.out_channels = out_channels
         self.conv_cat = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_center = nn.Sequential(
-            nn.Conv2d(in_channels*3, center_channels, 1, bias=False), # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, center_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(center_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(center_channels, center_channels, 1, bias=False),
@@ -477,7 +486,8 @@ class MultiHGDModuleObjectDetectionTwinLiteNetv2SingleTask(nn.Module):
         # print("output of guide_cat_conv_object shape: ", guide_cat_conv_object.shape)
 
         guide_cat_value_avg_object = guide_cat_conv_object + value_avg  # n x out_channels x h2 x w2
-        f_affinity_object = self.conv_affinity1_object(guide_cat_value_avg_object)  # W_lane - n x center_channels x h2 x w2
+        f_affinity_object = self.conv_affinity1_object(
+            guide_cat_value_avg_object)  # W_lane - n x center_channels x h2 x w2
         # print("output of f_affinity_object shape: ", f_affinity_object.shape)
 
         n_aff, c_ff, h_aff, w_aff = f_affinity_object.size()
@@ -489,7 +499,8 @@ class MultiHGDModuleObjectDetectionTwinLiteNetv2SingleTask(nn.Module):
         x_up_object = norm_aff * x_center.bmm(f_affinity_object)  # n x out_channels x h2*w2
         # print("output of x_up_object shape: ", x_up_object.shape)
 
-        x_up_object = x_up_object.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_object -  n x out_channels x h2 x w2
+        x_up_object = x_up_object.view(n, self.out_channels, h_aff,
+                                       w_aff)  # f_8_tilde_object -  n x out_channels x h2 x w2
         # print("output of x_up_object shape: ", x_up_object.shape)
 
         x_up_cat_object = torch.cat([x_up_object, guide_cat_conv_object], 1)  # f_8_hat_object
@@ -499,23 +510,23 @@ class MultiHGDModuleObjectDetectionTwinLiteNetv2SingleTask(nn.Module):
         # print("output of x_up_conv_object shape: ", x_up_conv_object.shape)
 
         # outputs = (x_up_conv_drivable, x_up_conv_lane, x_up_conv_object)
-        return x_up_conv_object#outputs
+        return x_up_conv_object  # outputs
 
 
 class MultiHGDModuleTwinLiteNetv2HalfCodewords(nn.Module):
     def __init__(self, in_channels, center_channels, out_channels, norm_layer=None):
         super(MultiHGDModuleTwinLiteNetv2HalfCodewords, self).__init__()
-        center_channels=center_channels//2
-        out_channels=out_channels//2
+        center_channels = center_channels // 2
+        out_channels = out_channels // 2
         self.in_channels = in_channels
         self.center_channels = center_channels
         self.out_channels = out_channels
         self.conv_cat = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_center = nn.Sequential(
-            nn.Conv2d(in_channels*3, center_channels, 1, bias=False), # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, center_channels, 1, bias=False),  # in_channels * 3 evala 211
             # norm_layer(out_channels),
             # nn.ReLU(inplace=True),
             # nn.Conv2d(out_channels, center_channels, 1, bias=False),
@@ -526,11 +537,11 @@ class MultiHGDModuleTwinLiteNetv2HalfCodewords(nn.Module):
         self.norm_center = nn.Sequential(
             nn.Softmax(2))
         self.conv_affinity0_drivable = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity0_lane = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity1_drivable = nn.Sequential(
@@ -596,7 +607,8 @@ class MultiHGDModuleTwinLiteNetv2HalfCodewords(nn.Module):
         guide_cat_conv_lane = self.conv_affinity0_lane(guide_cat)  # G_lane - n x out_channels x h2 x w2
         guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg  # n x out_channels x h2 x w2
         guide_cat_value_avg_lane = guide_cat_conv_lane + value_avg  # n x out_channels x h2 x w2
-        f_affinity_drivable = self.conv_affinity1_drivable(guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
+        f_affinity_drivable = self.conv_affinity1_drivable(
+            guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
         f_affinity_lane = self.conv_affinity1_lane(guide_cat_value_avg_lane)  # W_lane - n x center_channels x h2 x w2
         n_aff, c_ff, h_aff, w_aff = f_affinity_lane.size()
         f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
@@ -605,7 +617,8 @@ class MultiHGDModuleTwinLiteNetv2HalfCodewords(nn.Module):
         # x_up = norm_aff * x_center.bmm(f_affinity.transpose(1, 2))
         x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)  # n x out_channels x h2*
         x_up_lane = norm_aff * x_center.bmm(f_affinity_lane)  # n x out_channels x h2*w2
-        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff,
+                                           w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
         x_up_lane = x_up_lane.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_lane -  n x out_channels x h2 x w2
         x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)  # f_8_hat_drivable
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)  # f_8_hat_lane
@@ -613,21 +626,22 @@ class MultiHGDModuleTwinLiteNetv2HalfCodewords(nn.Module):
         x_up_conv_lane = self.conv_up_lane(x_up_cat_lane)
         outputs = (x_up_conv_drivable, x_up_conv_lane)
         return outputs
+
 
 class MultiHGDModuleTwinLiteNetv2QuarterCodewords(nn.Module):
     def __init__(self, in_channels, center_channels, out_channels, norm_layer=None):
         super(MultiHGDModuleTwinLiteNetv2QuarterCodewords, self).__init__()
-        center_channels=center_channels//4
-        out_channels=out_channels//4
+        center_channels = center_channels // 4
+        out_channels = out_channels // 4
         self.in_channels = in_channels
         self.center_channels = center_channels
         self.out_channels = out_channels
         self.conv_cat = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_center = nn.Sequential(
-            nn.Conv2d(in_channels*3, center_channels, 1, bias=False), # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, center_channels, 1, bias=False),  # in_channels * 3 evala 211
             # norm_layer(out_channels),
             # nn.ReLU(inplace=True),
             # nn.Conv2d(out_channels, center_channels, 1, bias=False),
@@ -638,11 +652,11 @@ class MultiHGDModuleTwinLiteNetv2QuarterCodewords(nn.Module):
         self.norm_center = nn.Sequential(
             nn.Softmax(2))
         self.conv_affinity0_drivable = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity0_lane = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity1_drivable = nn.Sequential(
@@ -708,7 +722,8 @@ class MultiHGDModuleTwinLiteNetv2QuarterCodewords(nn.Module):
         guide_cat_conv_lane = self.conv_affinity0_lane(guide_cat)  # G_lane - n x out_channels x h2 x w2
         guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg  # n x out_channels x h2 x w2
         guide_cat_value_avg_lane = guide_cat_conv_lane + value_avg  # n x out_channels x h2 x w2
-        f_affinity_drivable = self.conv_affinity1_drivable(guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
+        f_affinity_drivable = self.conv_affinity1_drivable(
+            guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
         f_affinity_lane = self.conv_affinity1_lane(guide_cat_value_avg_lane)  # W_lane - n x center_channels x h2 x w2
         n_aff, c_ff, h_aff, w_aff = f_affinity_lane.size()
         f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
@@ -717,7 +732,8 @@ class MultiHGDModuleTwinLiteNetv2QuarterCodewords(nn.Module):
         # x_up = norm_aff * x_center.bmm(f_affinity.transpose(1, 2))
         x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)  # n x out_channels x h2*
         x_up_lane = norm_aff * x_center.bmm(f_affinity_lane)  # n x out_channels x h2*w2
-        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff,
+                                           w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
         x_up_lane = x_up_lane.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_lane -  n x out_channels x h2 x w2
         x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)  # f_8_hat_drivable
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)  # f_8_hat_lane
@@ -726,20 +742,21 @@ class MultiHGDModuleTwinLiteNetv2QuarterCodewords(nn.Module):
         outputs = (x_up_conv_drivable, x_up_conv_lane)
         return outputs
 
+
 class MultiHGDModuleTwinLiteNetv2DoubleCodewords(nn.Module):
     def __init__(self, in_channels, center_channels, out_channels, norm_layer=None):
         super(MultiHGDModuleTwinLiteNetv2DoubleCodewords, self).__init__()
-        center_channels=center_channels*2
-        out_channels=out_channels*2
+        center_channels = center_channels * 2
+        out_channels = out_channels * 2
         self.in_channels = in_channels
         self.center_channels = center_channels
         self.out_channels = out_channels
         self.conv_cat = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_center = nn.Sequential(
-            nn.Conv2d(in_channels*3, center_channels, 1, bias=False), # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, center_channels, 1, bias=False),  # in_channels * 3 evala 211
             # norm_layer(out_channels),
             # nn.ReLU(inplace=True),
             # nn.Conv2d(out_channels, center_channels, 1, bias=False),
@@ -750,11 +767,11 @@ class MultiHGDModuleTwinLiteNetv2DoubleCodewords(nn.Module):
         self.norm_center = nn.Sequential(
             nn.Softmax(2))
         self.conv_affinity0_drivable = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity0_lane = nn.Sequential(
-            nn.Conv2d(in_channels*3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  # in_channels * 3 evala 211
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity1_drivable = nn.Sequential(
@@ -820,7 +837,8 @@ class MultiHGDModuleTwinLiteNetv2DoubleCodewords(nn.Module):
         guide_cat_conv_lane = self.conv_affinity0_lane(guide_cat)  # G_lane - n x out_channels x h2 x w2
         guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg  # n x out_channels x h2 x w2
         guide_cat_value_avg_lane = guide_cat_conv_lane + value_avg  # n x out_channels x h2 x w2
-        f_affinity_drivable = self.conv_affinity1_drivable(guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
+        f_affinity_drivable = self.conv_affinity1_drivable(
+            guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
         f_affinity_lane = self.conv_affinity1_lane(guide_cat_value_avg_lane)  # W_lane - n x center_channels x h2 x w2
         n_aff, c_ff, h_aff, w_aff = f_affinity_lane.size()
         f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
@@ -829,7 +847,8 @@ class MultiHGDModuleTwinLiteNetv2DoubleCodewords(nn.Module):
         # x_up = norm_aff * x_center.bmm(f_affinity.transpose(1, 2))
         x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)  # n x out_channels x h2*
         x_up_lane = norm_aff * x_center.bmm(f_affinity_lane)  # n x out_channels x h2*w2
-        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff,
+                                           w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
         x_up_lane = x_up_lane.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_lane -  n x out_channels x h2 x w2
         x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)  # f_8_hat_drivable
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)  # f_8_hat_lane
@@ -936,8 +955,12 @@ class MultiHGDModuleTwinLiteNetv2Scaled(nn.Module):
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)
         x_up_conv_drivable = self.conv_up_drivable(x_up_cat_drivable)
         x_up_conv_lane = self.conv_up_lane(x_up_cat_lane)
+        # Ensure fixed output size, e.g. 192x320
+        x_up_conv_drivable = F.interpolate(x_up_conv_drivable, size=(192, 320), mode='bilinear', align_corners=True)
+        x_up_conv_lane = F.interpolate(x_up_conv_lane, size=(192, 320), mode='bilinear', align_corners=True)
         outputs = (x_up_conv_drivable, x_up_conv_lane)
         return outputs
+
 
 class MultiHGDModuleTwinLiteNetv2ScaledObjectDetection(nn.Module):
     def __init__(self, in_channels, center_channels, out_channels, scale=1, norm_layer=None):
@@ -1154,11 +1177,11 @@ class MultiHGDModule_1632(nn.Module):
         self.norm_center = nn.Sequential(
             nn.Softmax(2))
         self.conv_affinity0_lane = nn.Sequential(
-            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False), ######
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  ######
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity0_drivable = nn.Sequential(
-            nn.Conv2d(in_channels * 2, out_channels, 1, bias=False), ######
+            nn.Conv2d(in_channels * 2, out_channels, 1, bias=False),  ######
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity1 = nn.Sequential(
@@ -1211,11 +1234,13 @@ class MultiHGDModule_1632(nn.Module):
         guide_cat_lane = torch.cat([guide2, x_up1, x_up0], 1)  # m8_lane - n x 3*in_channels x h2 x w2 (1536x48x80)
         guide_cat_drivable = torch.cat([x_up1, x_up0], 1)  # m8_drivable - n x 3*in_channels x h2 x w2 (1024x48x80)
         guide_cat_conv_lane = self.conv_affinity0_lane(guide_cat_lane)  # G_lane - n x out_channels x h2 x w2
-        guide_cat_conv_drivable = self.conv_affinity0_drivable(guide_cat_drivable)  # G_drivable - n x out_channels x h2 x w2
+        guide_cat_conv_drivable = self.conv_affinity0_drivable(
+            guide_cat_drivable)  # G_drivable - n x out_channels x h2 x w2
         guide_cat_value_avg_lane = guide_cat_conv_lane + value_avg  # n x out_channels x h2 x w2
         guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg  # n x out_channels x h2 x w2
         f_affinity_lane = self.conv_affinity1(guide_cat_value_avg_lane)  # W_lane - n x center_channels x h2 x w2
-        f_affinity_drivable = self.conv_affinity1(guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
+        f_affinity_drivable = self.conv_affinity1(
+            guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
         n_aff, c_ff, h_aff, w_aff = f_affinity_lane.size()
         f_affinity_lane = f_affinity_lane.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
         f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
@@ -1224,13 +1249,15 @@ class MultiHGDModule_1632(nn.Module):
         x_up_lane = norm_aff * x_center.bmm(f_affinity_lane)  # n x out_channels x h2*w2
         x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)  # n x out_channels x h2*w2
         x_up_lane = x_up_lane.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_lane -  n x out_channels x h2 x w2
-        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff,
+                                           w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)  # f_8_hat_lane
         x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)  # f_8_hat_drivable
         x_up_conv_lane = self.conv_up(x_up_cat_lane)
         x_up_conv_drivable = self.conv_up(x_up_cat_drivable)
         outputs = (x_up_conv_lane, x_up_conv_drivable)
         return outputs
+
 
 class MultiHGDModule_32(nn.Module):
     def __init__(self, in_channels, center_channels, out_channels, norm_layer=None):
@@ -1254,11 +1281,11 @@ class MultiHGDModule_32(nn.Module):
         self.norm_center = nn.Sequential(
             nn.Softmax(2))
         self.conv_affinity0_lane = nn.Sequential(
-            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False), ######
+            nn.Conv2d(in_channels * 3, out_channels, 1, bias=False),  ######
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity0_drivable = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 1, bias=False), ######
+            nn.Conv2d(in_channels, out_channels, 1, bias=False),  ######
             norm_layer(out_channels),
             nn.ReLU(inplace=True))
         self.conv_affinity1 = nn.Sequential(
@@ -1311,11 +1338,13 @@ class MultiHGDModule_32(nn.Module):
         guide_cat_lane = torch.cat([guide2, x_up1, x_up0], 1)  # m8_lane - n x 3*in_channels x h2 x w2 (1536x48x80)
         guide_cat_drivable = x_up0  # torch.cat(x_up0, 1)  # m8_drivable - n x 3*in_channels x h2 x w2 (512x48x80)
         guide_cat_conv_lane = self.conv_affinity0_lane(guide_cat_lane)  # G_lane - n x out_channels x h2 x w2
-        guide_cat_conv_drivable = self.conv_affinity0_drivable(guide_cat_drivable)  # G_drivable - n x out_channels x h2 x w2
+        guide_cat_conv_drivable = self.conv_affinity0_drivable(
+            guide_cat_drivable)  # G_drivable - n x out_channels x h2 x w2
         guide_cat_value_avg_lane = guide_cat_conv_lane + value_avg  # n x out_channels x h2 x w2
         guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg  # n x out_channels x h2 x w2
         f_affinity_lane = self.conv_affinity1(guide_cat_value_avg_lane)  # W_lane - n x center_channels x h2 x w2
-        f_affinity_drivable = self.conv_affinity1(guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
+        f_affinity_drivable = self.conv_affinity1(
+            guide_cat_value_avg_drivable)  # W_drivable - n x center_channels x h2 x w2
         n_aff, c_ff, h_aff, w_aff = f_affinity_lane.size()
         f_affinity_lane = f_affinity_lane.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
         f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)  # # n x center_channels x h2*w2
@@ -1324,13 +1353,15 @@ class MultiHGDModule_32(nn.Module):
         x_up_lane = norm_aff * x_center.bmm(f_affinity_lane)  # n x out_channels x h2*w2
         x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)  # n x out_channels x h2*w2
         x_up_lane = x_up_lane.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_lane -  n x out_channels x h2 x w2
-        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff,
+                                           w_aff)  # f_8_tilde_drivable -  n x out_channels x h2 x w2
         x_up_cat_lane = torch.cat([x_up_lane, guide_cat_conv_lane], 1)  # f_8_hat_lane
         x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)  # f_8_hat_drivable
         x_up_conv_lane = self.conv_up(x_up_cat_lane)
         x_up_conv_drivable = self.conv_up(x_up_cat_drivable)
         outputs = (x_up_conv_lane, x_up_conv_drivable)
         return outputs
+
 
 class MultiHGDModule_lane(nn.Module):
     def __init__(self, in_channels, center_channels, out_channels, norm_layer=None):
@@ -1425,7 +1456,7 @@ class MultiHGDModule_lane(nn.Module):
         x_up_conv_lane = self.conv_up(x_up_cat_lane)
         # x_up_conv_drivable = self.conv_up(x_up_cat_drivable)
         # outputs = (x_up_conv_lane, x_up_conv_drivable)
-        return x_up_conv_lane#outputs
+        return x_up_conv_lane  # outputs
 
 
 class HGDecoder(nn.Module):
@@ -1443,35 +1474,35 @@ class HGDecoder(nn.Module):
             nn.Conv2d(512, 256, 1, padding=0, bias=False),
             norm_layer(256),
             nn.ReLU(inplace=True))
-        #self.conv30 = nn.Sequential(
+        # self.conv30 = nn.Sequential(
         #    nn.Conv2d(512, 512, 1, padding=0, bias=False),
         #    norm_layer(512),
         #    nn.ReLU(inplace=True))
-        #self.conv52 = nn.Sequential(
+        # self.conv52 = nn.Sequential(
         #    nn.Conv2d(in_channels, 512, 3, padding=1, bias=False),
         #    norm_layer(512),
         #    nn.ReLU(inplace=True))
-        #self.conv53 = nn.Sequential(
+        # self.conv53 = nn.Sequential(
         #    nn.Conv2d(in_channels, 512, 3, padding=1, bias=False),
         #    norm_layer(512),
         #    nn.ReLU(inplace=True))
-        #self.conv51 = nn.Sequential(
+        # self.conv51 = nn.Sequential(
         #    nn.Conv2d((512+out_channels), 512, 1, bias=False),
         #    norm_layer(512),
         #    nn.ReLU(inplace=True))
-        #self.num_center = 128
-        #self.num_center = 256
-        #self.num_center = int(out_channels * 4)
-        #self.num_center = out_channels
-        #self.num_center = 600
+        # self.num_center = 128
+        # self.num_center = 256
+        # self.num_center = int(out_channels * 4)
+        # self.num_center = out_channels
+        # self.num_center = 600
         self.num_center = num_center
         self.hgdmodule0 = HGDModule(256, self.num_center, 512, norm_layer=norm_layer)
         self.conv_pred3_lanes = nn.Sequential(nn.Dropout2d(0.1, False),
-            nn.Conv2d(512, out_channels, 1, padding=0))
+                                              nn.Conv2d(512, out_channels, 1, padding=0))
         self.conv_pred3_drivable = nn.Sequential(nn.Dropout2d(0.1, False),
-                                        nn.Conv2d(512, out_channels, 1, padding=0))
+                                                 nn.Conv2d(512, out_channels, 1, padding=0))
         # self.conv1x1 = nn.Conv2d(256, 512, kernel_size=1)
-        #for m in self.modules():
+        # for m in self.modules():
         #    #print(f"initialize {m} layer.")
         #    if isinstance(m, nn.Conv2d):
         #        n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
@@ -1480,12 +1511,10 @@ class HGDecoder(nn.Module):
         #        m.weight.data.fill_(1)
         #        m.bias.data.zero_()
 
-               
-
     def forward(self, *inputs):
         # feat50 = self.conv50(inputs[-1])
         # feat40 = self.conv40(inputs[-2])
-        #feat30 = self.conv30(inputs[-3])
+        # feat30 = self.conv30(inputs[-3])
         feat_res2, feat_res4, feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -1550,7 +1579,6 @@ class MultiHGDecoder(nn.Module):
         # self.conv1x1 = nn.Conv2d(256, 512, kernel_size=1)
 
     def forward(self, *inputs):
-
         feat_res2, feat_res4, feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -1566,6 +1594,7 @@ class MultiHGDecoder(nn.Module):
         outs = (outs_drivable, outs_lane)
 
         return outs
+
 
 class MultiHGDecoderTwinLiteNet2(nn.Module):
     def __init__(self, in_channels, out_channels, num_center,
@@ -1583,9 +1612,9 @@ class MultiHGDecoderTwinLiteNet2(nn.Module):
             norm_layer(64),
             nn.ReLU(inplace=True))
         self.conv30 = nn.Sequential(
-           nn.Conv2d(19, 64, 1, padding=0, bias=False),
-           norm_layer(64),
-           nn.ReLU(inplace=True))
+            nn.Conv2d(19, 64, 1, padding=0, bias=False),
+            norm_layer(64),
+            nn.ReLU(inplace=True))
         # self.conv52 = nn.Sequential(
         #    nn.Conv2d(in_channels, 512, 3, padding=1, bias=False),
         #    norm_layer(512),
@@ -1604,7 +1633,8 @@ class MultiHGDecoderTwinLiteNet2(nn.Module):
         # self.num_center = out_channels
         # self.num_center = 600
         self.num_center = num_center
-        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2(in_channels=64, center_channels=192, out_channels=32, norm_layer=norm_layer)#, self.num_center,out_channels = 32, norm_layer=norm_layer)
+        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2(in_channels=64, center_channels=192, out_channels=32,
+                                                      norm_layer=norm_layer)  # , self.num_center,out_channels = 32, norm_layer=norm_layer)
         # self.conv_pred3_lanes = nn.Sequential(nn.Dropout2d(0.1, False),
         #                                       nn.Conv2d(512, out_channels, 1, padding=0))
         # self.conv_pred3_drivable = nn.Sequential(nn.Dropout2d(0.1, False),
@@ -1621,7 +1651,6 @@ class MultiHGDecoderTwinLiteNet2(nn.Module):
         # self.conv1x1 = nn.Conv2d(256, 512, kernel_size=1)
 
     def forward(self, *inputs):
-
         feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -1641,7 +1670,6 @@ class MultiHGDecoderTwinLiteNet2(nn.Module):
         return outs0
 
 
-
 class MHGDTwinLiteNet2Scaled(nn.Module):
     def __init__(self, scale, num_center, norm_layer=None, up_kwargs=None):
         super(MHGDTwinLiteNet2Scaled, self).__init__()
@@ -1658,25 +1686,29 @@ class MHGDTwinLiteNet2Scaled(nn.Module):
             norm_layer(int(64 * scale)),
             nn.ReLU(inplace=True))
         self.conv30 = nn.Sequential(
-            nn.Conv2d(int(19 * scale), int(64 * scale), 1, padding=0, bias=False),
+            # nn.Conv2d(int(19 * scale), int(64 * scale), 1, padding=0, bias=False),
+            nn.Conv2d(int(32 * scale), int(64 * scale), 1, padding=0, bias=False),
             # nn.Conv2d(int(64 * scale), int(64 * scale), 2, padding=0, bias=False),
             norm_layer(int(64 * scale)),
             nn.ReLU(inplace=True))
 
         self.num_center = int(num_center * scale)
-        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2Scaled(in_channels=int(64 * scale), center_channels=int(192 * scale),
-                                                      out_channels=int(32 * scale), norm_layer=norm_layer)
+        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2Scaled(in_channels=int(64 * scale),
+                                                            center_channels=int(128 * scale),
+                                                            out_channels=int(32 * scale), norm_layer=norm_layer)
 
     def forward(self, *inputs):
-        feat_res8, feat_res16, feat_res32 = inputs#[0]
+        feat_res8, feat_res16, feat_res32 = inputs  # [0]
         feat_32 = self.conv50(feat_res32)
         feat_16 = self.conv40(feat_res16)
         feat_8 = self.conv30(feat_res8)
         outs0 = self.hgdmodule0(feat_32, feat_16, feat_8)
+
         return outs0
 
+
 class MHGDTwinLiteNet2ScaledObjectDetection(nn.Module):
-    def __init__(self, in_channels, out_channels,scale, num_center, norm_layer=None, up_kwargs=None):
+    def __init__(self, in_channels, out_channels, scale, num_center, norm_layer=None, up_kwargs=None):
         super(MHGDTwinLiteNet2ScaledObjectDetection, self).__init__()
         if norm_layer is None:
             norm_layer = torch.nn.BatchNorm2d  # Default normalization layer
@@ -1714,8 +1746,10 @@ class MHGDTwinLiteNet2ScaledObjectDetection(nn.Module):
         # )
 
         self.num_center = int(num_center * scale)
-        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2ScaledObjectDetection(in_channels=int(64 * scale), center_channels=int(192 * scale),
-                                                      out_channels=int(32 * scale), norm_layer=norm_layer)
+        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2ScaledObjectDetection(in_channels=int(64 * scale),
+                                                                           center_channels=int(192 * scale),
+                                                                           out_channels=int(32 * scale),
+                                                                           norm_layer=norm_layer)
 
     def forward(self, *inputs):
         feat_res8, feat_res16, feat_res32 = inputs[0]
@@ -1746,9 +1780,9 @@ class MultiHGDecoderTwinLiteNet2HalfCodewords(nn.Module):
             norm_layer(64),
             nn.ReLU(inplace=True))
         self.conv30 = nn.Sequential(
-           nn.Conv2d(19, 64, 1, padding=0, bias=False),
-           norm_layer(64),
-           nn.ReLU(inplace=True))
+            nn.Conv2d(19, 64, 1, padding=0, bias=False),
+            norm_layer(64),
+            nn.ReLU(inplace=True))
         # self.conv52 = nn.Sequential(
         #    nn.Conv2d(in_channels, 512, 3, padding=1, bias=False),
         #    norm_layer(512),
@@ -1767,7 +1801,8 @@ class MultiHGDecoderTwinLiteNet2HalfCodewords(nn.Module):
         # self.num_center = out_channels
         # self.num_center = 600
         self.num_center = num_center
-        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2HalfCodewords(in_channels=64, center_channels=192, out_channels=32, norm_layer=norm_layer)#, self.num_center,out_channels = 32, norm_layer=norm_layer)
+        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2HalfCodewords(in_channels=64, center_channels=192, out_channels=32,
+                                                                   norm_layer=norm_layer)  # , self.num_center,out_channels = 32, norm_layer=norm_layer)
         # self.conv_pred3_lanes = nn.Sequential(nn.Dropout2d(0.1, False),
         #                                       nn.Conv2d(512, out_channels, 1, padding=0))
         # self.conv_pred3_drivable = nn.Sequential(nn.Dropout2d(0.1, False),
@@ -1784,7 +1819,6 @@ class MultiHGDecoderTwinLiteNet2HalfCodewords(nn.Module):
         # self.conv1x1 = nn.Conv2d(256, 512, kernel_size=1)
 
     def forward(self, *inputs):
-
         feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -1803,6 +1837,7 @@ class MultiHGDecoderTwinLiteNet2HalfCodewords(nn.Module):
 
         return outs0
 
+
 class MultiHGDecoderTwinLiteNet2QuarterCodewords(nn.Module):
     def __init__(self, in_channels, out_channels, num_center,
                  norm_layer=None, up_kwargs=None):
@@ -1819,13 +1854,15 @@ class MultiHGDecoderTwinLiteNet2QuarterCodewords(nn.Module):
             norm_layer(64),
             nn.ReLU(inplace=True))
         self.conv30 = nn.Sequential(
-           nn.Conv2d(19, 64, 1, padding=0, bias=False),
-           norm_layer(64),
-           nn.ReLU(inplace=True))
+            nn.Conv2d(19, 64, 1, padding=0, bias=False),
+            norm_layer(64),
+            nn.ReLU(inplace=True))
         self.num_center = num_center
-        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2QuarterCodewords(in_channels=64, center_channels=192, out_channels=32, norm_layer=norm_layer)#, self.num_center,out_channels = 32, norm_layer=norm_layer)
-    def forward(self, *inputs):
+        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2QuarterCodewords(in_channels=64, center_channels=192,
+                                                                      out_channels=32,
+                                                                      norm_layer=norm_layer)  # , self.num_center,out_channels = 32, norm_layer=norm_layer)
 
+    def forward(self, *inputs):
         feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -1834,6 +1871,7 @@ class MultiHGDecoderTwinLiteNet2QuarterCodewords(nn.Module):
         outs0 = self.hgdmodule0(feat_32, feat_16, feat_8)
 
         return outs0
+
 
 class MultiHGDecoderTwinLiteNet2DoubleCodewords(nn.Module):
     def __init__(self, in_channels, out_channels, num_center,
@@ -1851,13 +1889,15 @@ class MultiHGDecoderTwinLiteNet2DoubleCodewords(nn.Module):
             norm_layer(64),
             nn.ReLU(inplace=True))
         self.conv30 = nn.Sequential(
-           nn.Conv2d(19, 64, 1, padding=0, bias=False),
-           norm_layer(64),
-           nn.ReLU(inplace=True))
+            nn.Conv2d(19, 64, 1, padding=0, bias=False),
+            norm_layer(64),
+            nn.ReLU(inplace=True))
         self.num_center = num_center
-        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2DoubleCodewords(in_channels=64, center_channels=192, out_channels=32, norm_layer=norm_layer)#, self.num_center,out_channels = 32, norm_layer=norm_layer)
-    def forward(self, *inputs):
+        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2DoubleCodewords(in_channels=64, center_channels=192,
+                                                                     out_channels=32,
+                                                                     norm_layer=norm_layer)  # , self.num_center,out_channels = 32, norm_layer=norm_layer)
 
+    def forward(self, *inputs):
         feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -1920,7 +1960,6 @@ class MultiHGDecoder_1632(nn.Module):
         self.conv1x1_3_drivable = nn.Conv2d(128, 32, 1)  # adjust the input and output channels appropriately
 
     def forward(self, *inputs):
-
         feat_res2, feat_res4, feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -1935,6 +1974,7 @@ class MultiHGDecoder_1632(nn.Module):
         outs = (outs_lane, outs_drivable)
 
         return outs
+
 
 class MultiHGDecoder_32(nn.Module):
     def __init__(self, in_channels, out_channels, num_center,
@@ -1988,7 +2028,6 @@ class MultiHGDecoder_32(nn.Module):
         self.conv1x1_3_drivable = nn.Conv2d(128, 32, 1)  # adjust the input and output channels appropriately
 
     def forward(self, *inputs):
-
         feat_res2, feat_res4, feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -2003,6 +2042,7 @@ class MultiHGDecoder_32(nn.Module):
         outs = (outs_lane, outs_drivable)
 
         return outs
+
 
 class MultiHGDecoder_lane(nn.Module):
     def __init__(self, in_channels, out_channels, num_center,
@@ -2057,7 +2097,6 @@ class MultiHGDecoder_lane(nn.Module):
         self.conv1x1_3_drivable = nn.Conv2d(128, 32, 1)  # adjust the input and output channels appropriately
 
     def forward(self, *inputs):
-
         feat_res2, feat_res4, feat_res8, feat_res16, feat_res32 = inputs[0]
         feat_32 = self.conv50(feat_res32)  # self.conv50(inputs[-1])
         feat_16 = self.conv40(feat_res16)  # self.conv40(inputs[-2])
@@ -2073,8 +2112,9 @@ class MultiHGDecoder_lane(nn.Module):
 
         return outs
 
+
 def get_efficientfcn(dataset='pascal_voc', backbone='resnet50', pretrained=False,
-               root='~/.encoding/models', **kwargs):
+                     root='~/.encoding/models', **kwargs):
     r"""EncNet model from the paper `"Context Encoding for Semantic Segmentation"
     <https://arxiv.org/pdf/1803.08904.pdf>`_
 
@@ -2095,15 +2135,16 @@ def get_efficientfcn(dataset='pascal_voc', backbone='resnet50', pretrained=False
     >>> model = get_efficientfcn(dataset='pascal_voc', backbone='resnet50', pretrained=False)
     >>> print(model)
     """
-    #kwargs['lateral'] = True if dataset.lower().startswith('p') else False
+    # kwargs['lateral'] = True if dataset.lower().startswith('p') else False
     # infer number of classes
     from ..datasets import datasets, acronyms
     model = efficientFCN(datasets[dataset.lower()].NUM_CLASS, backbone=backbone, root=root, **kwargs)
     if pretrained:
         from .model_store import get_model_file
         model.load_state_dict(torch.load(
-            get_model_file('efficientFCN_%s_%s'%(backbone, acronyms[dataset]), root=root)))
+            get_model_file('efficientFCN_%s_%s' % (backbone, acronyms[dataset]), root=root)))
     return model
+
 
 def get_efficientfcn_resnet50_pcontext(pretrained=False, root='~/.encoding/models', **kwargs):
     r"""EncNet-PSP model from the paper `"Context Encoding for Semantic Segmentation"
@@ -2123,7 +2164,8 @@ def get_efficientfcn_resnet50_pcontext(pretrained=False, root='~/.encoding/model
     >>> print(model)
     """
     return get_efficientfcn('pcontext', 'resnet50', pretrained, root=root, aux=True,
-                      base_size=520, crop_size=480, **kwargs)
+                            base_size=520, crop_size=480, **kwargs)
+
 
 def get_efficientfcn_resnet101_pcontext(pretrained=False, root='~/.encoding/models', **kwargs):
     r"""EncNet-PSP model from the paper `"Context Encoding for Semantic Segmentation"
@@ -2143,7 +2185,8 @@ def get_efficientfcn_resnet101_pcontext(pretrained=False, root='~/.encoding/mode
     >>> print(model)
     """
     return get_efficientfcn('pcontext', 'resnet101', pretrained, root=root, aux=True,
-                      base_size=520, crop_size=480, **kwargs)
+                            base_size=520, crop_size=480, **kwargs)
+
 
 def get_efficientfcn_resnet50_citys(pretrained=False, root='~/.encoding/models', **kwargs):
     r"""EncNet-PSP model from the paper `"Context Encoding for Semantic Segmentation"
@@ -2163,7 +2206,8 @@ def get_efficientfcn_resnet50_citys(pretrained=False, root='~/.encoding/models',
     >>> print(model)
     """
     return get_efficientfcn('citys', 'resnet50', pretrained, root=root, aux=True,
-                      base_size=1024, crop_size=768, **kwargs)
+                            base_size=1024, crop_size=768, **kwargs)
+
 
 def get_efficientfcn_resnet101_citys(pretrained=False, root='~/.encoding/models', **kwargs):
     r"""EncNet-PSP model from the paper `"Context Encoding for Semantic Segmentation"
@@ -2183,7 +2227,7 @@ def get_efficientfcn_resnet101_citys(pretrained=False, root='~/.encoding/models'
     >>> print(model)
     """
     return get_efficientfcn('citys', 'resnet101', pretrained, root=root, aux=True,
-                      base_size=1024, crop_size=768, **kwargs)
+                            base_size=1024, crop_size=768, **kwargs)
 
 
 def get_efficientfcn_resnet50_ade(pretrained=False, root='~/.encoding/models', **kwargs):
@@ -2204,7 +2248,8 @@ def get_efficientfcn_resnet50_ade(pretrained=False, root='~/.encoding/models', *
     >>> print(model)
     """
     return get_efficientfcn('ade20k', 'resnet50', pretrained, root=root, aux=True,
-                      base_size=520, crop_size=480, **kwargs)
+                            base_size=520, crop_size=480, **kwargs)
+
 
 def get_efficientfcn_resnet101_ade(pretrained=False, root='~/.encoding/models', **kwargs):
     r"""EncNet-PSP model from the paper `"Context Encoding for Semantic Segmentation"
@@ -2224,7 +2269,8 @@ def get_efficientfcn_resnet101_ade(pretrained=False, root='~/.encoding/models', 
     >>> print(model)
     """
     return get_efficientfcn('ade20k', 'resnet101', pretrained, root=root, aux=True,
-                      base_size=640, crop_size=576, **kwargs)
+                            base_size=640, crop_size=576, **kwargs)
+
 
 def get_efficientfcn_resnet152_ade(pretrained=False, root='~/.encoding/models', **kwargs):
     r"""EncNet-PSP model from the paper `"Context Encoding for Semantic Segmentation"
@@ -2244,4 +2290,4 @@ def get_efficientfcn_resnet152_ade(pretrained=False, root='~/.encoding/models', 
     >>> print(model)
     """
     return get_efficientfcn('ade20k', 'resnet152', pretrained, root=root, aux=True,
-                      base_size=520, crop_size=480, **kwargs)
+                            base_size=520, crop_size=480, **kwargs)

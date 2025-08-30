@@ -4,13 +4,13 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
-_C.LOG_DIR = 'runs/twinlitenet_with_trilitenet_NMS_CONF_THRESHOLD_0.25_NMS_IOU_THRESHOLD_0.45'
+_C.LOG_DIR = '../from_scratch_amp_disabled'
 _C.GPUS = (0,)
 _C.WORKERS = 8
 _C.PIN_MEMORY = False
 _C.PRINT_FREQ = 20
-_C.AUTO_RESUME =False       # Resume from the last training interrupt
-_C.NEED_AUTOANCHOR = True#      # Re-select the prior anchor(k-means)    When training from scratch (epoch=0), set it to be ture!
+_C.AUTO_RESUME = True       # Resume from the last training interrupt
+_C.NEED_AUTOANCHOR = False #      # Re-select the prior anchor(k-means)    When training from scratch (epoch=0), set it to be ture!
 _C.DEBUG = False
 _C.num_seg_class = 2
 
@@ -90,7 +90,7 @@ _C.TRAIN.GAMMA1 = 0.99
 _C.TRAIN.GAMMA2 = 0.0
 
 _C.TRAIN.BEGIN_EPOCH = 0
-_C.TRAIN.END_EPOCH = 240
+_C.TRAIN.END_EPOCH = 300
 
 _C.TRAIN.VAL_FREQ = 1
 _C.TRAIN.BATCH_SIZE_PER_GPU = 12

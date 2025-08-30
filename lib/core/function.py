@@ -72,7 +72,7 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
             for tgt in target:
                 assign_target.append(tgt.to(device))
             target = assign_target
-        with amp.autocast(enabled=device.type != 'cpu'):
+        with amp.autocast(enabled=False):
             outputs = model(input)
             total_loss, head_losses = criterion(outputs, target, shapes,model)
             # print(head_losses)
@@ -86,6 +86,26 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
         if rank in [-1, 0]:
             # measure accuracy and record loss
             losses.update(total_loss.item(), input.size(0))
+            # ➤ Check if loss.avg is NaN and print debug info
+            if math.isnan(losses.avg):
+                logger.warning("NaN loss detected! Dumping output and target stats:")
+                for i, out in enumerate(outputs):  # assuming model returns [det_out, da_seg_out, ll_seg_out]
+                    if isinstance(out, torch.Tensor):
+                        logger.warning(f"[DEBUG] Output[{i}] min/max: {out.min().item()} / {out.max().item()}")
+                    elif isinstance(out, (list, tuple)):
+                        for j, t in enumerate(out):
+                            if isinstance(t, torch.Tensor):
+                                logger.warning(f"[DEBUG] Output[{i}][{j}] min/max: {t.min().item()} / {t.max().item()}")
+
+                for i, t in enumerate(target):
+                    if isinstance(t, torch.Tensor):
+                        if torch.numel(t) > 0:
+                            logger.warning(f"[DEBUG] target[{i}] - dtype: {t.dtype}, shape: {t.shape}, "
+                                           f"min: {t.min().item()}, max: {t.max().item()}")
+                        else:
+                            logger.warning(f"[DEBUG] target[{i}] is an empty tensor with shape: {t.shape}")
+                    else:
+                        logger.warning(f"[DEBUG] target[{i}] is not a tensor. Type: {type(t)}")
 
             # _, avg_acc, cnt, pred = accuracy(output.detach().cpu().numpy(),
             #                                  target.detach().cpu().numpy())
@@ -237,7 +257,8 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
             ll_acc = ll_metric.lineAccuracy()
             ll_IoU = ll_metric.IntersectionOverUnion()
             ll_mIoU = ll_metric.meanIntersectionOverUnion()
-
+            # print("Acc from metric:", ll_metric.pixelAccuracy())
+            # print("IoU from metric:", ll_metric.IntersectionOverUnion())
             ll_acc_seg.update(ll_acc,img.size(0))
             ll_IoU_seg.update(ll_IoU,img.size(0))
             ll_mIoU_seg.update(ll_mIoU,img.size(0))
