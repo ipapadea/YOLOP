@@ -179,7 +179,6 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
     seen =  0 
     confusion_matrix = ConfusionMatrix(nc=model.nc) #detector confusion matrix
     da_metric = SegmentationMetric(config.num_seg_class) #segment confusion matrix    
-    ll_metric = SegmentationMetric(2) #segment confusion matrix
 
     names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
     colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
@@ -194,9 +193,6 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
     da_IoU_seg = AverageMeter()
     da_mIoU_seg = AverageMeter()
 
-    ll_acc_seg = AverageMeter()
-    ll_IoU_seg = AverageMeter()
-    ll_mIoU_seg = AverageMeter()
 
     T_inf = AverageMeter()
     T_nms = AverageMeter()
@@ -246,24 +242,7 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
             da_IoU_seg.update(da_IoU,img.size(0))
             da_mIoU_seg.update(da_mIoU,img.size(0))
 
-            #lane line segment evaluation
-            _,ll_predict=torch.max(ll_seg_out, 1)
-            _,ll_gt=torch.max(target[2], 1)
-            ll_predict = ll_predict[:, pad_h:height-pad_h, pad_w:width-pad_w]
-            ll_gt = ll_gt[:, pad_h:height-pad_h, pad_w:width-pad_w]
-
-            ll_metric.reset()
-            ll_metric.addBatch(ll_predict.cpu(), ll_gt.cpu())
-            ll_acc = ll_metric.lineAccuracy()
-            ll_IoU = ll_metric.IntersectionOverUnion()
-            ll_mIoU = ll_metric.meanIntersectionOverUnion()
-            # print("Acc from metric:", ll_metric.pixelAccuracy())
-            # print("IoU from metric:", ll_metric.IntersectionOverUnion())
-            ll_acc_seg.update(ll_acc,img.size(0))
-            ll_IoU_seg.update(ll_IoU,img.size(0))
-            ll_mIoU_seg.update(ll_mIoU,img.size(0))
-            
-            total_loss, head_losses = criterion((train_out,da_seg_out, ll_seg_out), target, shapes,model)   #Compute loss
+            total_loss, head_losses = criterion((train_out,da_seg_out), target, shapes,model)   #Compute loss
             losses.update(total_loss.item(), img.size(0))
 
             #NMS
@@ -296,23 +275,6 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
                         img_test1 = img_test.copy()
                         _ = show_seg_result(img_test, da_seg_mask, i,epoch,save_dir)
                         _ = show_seg_result(img_test1, da_gt_mask, i, epoch, save_dir, is_gt=True)
-
-                        img_ll = cv2.imread(paths[i])
-                        ll_seg_mask = ll_seg_out[i][:, pad_h:height-pad_h, pad_w:width-pad_w].unsqueeze(0)
-                        ll_seg_mask = torch.nn.functional.interpolate(ll_seg_mask, scale_factor=int(1/ratio), mode='bilinear')
-                        _, ll_seg_mask = torch.max(ll_seg_mask, 1)
-
-                        ll_gt_mask = target[2][i][:, pad_h:height-pad_h, pad_w:width-pad_w].unsqueeze(0)
-                        ll_gt_mask = torch.nn.functional.interpolate(ll_gt_mask, scale_factor=int(1/ratio), mode='bilinear')
-                        _, ll_gt_mask = torch.max(ll_gt_mask, 1)
-
-                        ll_seg_mask = ll_seg_mask.int().squeeze().cpu().numpy()
-                        ll_gt_mask = ll_gt_mask.int().squeeze().cpu().numpy()
-                        # seg_mask = seg_mask > 0.5
-                        # plot_img_and_mask(img_test, seg_mask, i,epoch,save_dir)
-                        img_ll1 = img_ll.copy()
-                        _ = show_seg_result(img_ll, ll_seg_mask, i,epoch,save_dir, is_ll=True)
-                        _ = show_seg_result(img_ll1, ll_gt_mask, i, epoch, save_dir, is_ll=True, is_gt=True)
 
                         img_det = cv2.imread(paths[i])
                         img_gt = img_det.copy()
@@ -503,7 +465,6 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
         maps[c] = ap[i]
 
     da_segment_result = (da_acc_seg.avg,da_IoU_seg.avg,da_mIoU_seg.avg)
-    ll_segment_result = (ll_acc_seg.avg,ll_IoU_seg.avg,ll_mIoU_seg.avg)
 
     # print(da_segment_result)
     # print(ll_segment_result)
@@ -511,7 +472,7 @@ def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir
     # print('mp:{},mr:{},map50:{},map:{}'.format(mp, mr, map50, map))
     #print segmet_result
     t = [T_inf.avg, T_nms.avg]
-    return da_segment_result, ll_segment_result, detect_result, losses.avg, maps, t
+    return da_segment_result, detect_result, losses.avg, maps, t
         
 
 

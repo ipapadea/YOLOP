@@ -3,6 +3,7 @@ import os, sys
 import math
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import pprint
 import time
@@ -34,6 +35,7 @@ from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
 from lib.utils import run_anchor
 import random
+from lib.dataset import MultitaskWeedsDataset
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Multitask network')
@@ -159,7 +161,6 @@ def main():
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    checkpoint_file = "from_scratch_amp_disabled/BddDataset/from_scratch_amp_disabled_2025-08-26-17-58/epoch-132.pth"
 
     if rank in [-1, 0]:
         checkpoint_file = os.path.join(
@@ -267,24 +268,19 @@ def main():
 
     # assign model params
     model.gr = 1.0
-    model.nc = 1
+    model.nc = 3
     # print('bulid model finished')
 
     print("begin to load data")
     # Data loading
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
-
-    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+    # No torchvision transforms since images are already NumPy → Tensor and normalized
+    train_dataset = MultitaskWeedsDataset(
         cfg=cfg,
         is_train=True,
         inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])
+        transform=None  # You can add custom augmentations here later
     )
+
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
 
     train_loader = DataLoaderX(
@@ -294,19 +290,17 @@ def main():
         num_workers=cfg.WORKERS,
         sampler=train_sampler,
         pin_memory=cfg.PIN_MEMORY,
-        collate_fn=dataset.AutoDriveDataset.collate_fn
+        collate_fn=MultitaskWeedsDataset.collate_fn
     )
     num_batch = len(train_loader)
 
+    # Validation loader (only on main process)
     if rank in [-1, 0]:
-        valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        valid_dataset = MultitaskWeedsDataset(
             cfg=cfg,
             is_train=False,
             inputsize=cfg.MODEL.IMAGE_SIZE,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                normalize,
-            ])
+            transform=None  # No transforms during evaluation
         )
 
         valid_loader = DataLoaderX(
@@ -315,10 +309,9 @@ def main():
             shuffle=False,
             num_workers=cfg.WORKERS,
             pin_memory=cfg.PIN_MEMORY,
-            collate_fn=dataset.AutoDriveDataset.collate_fn
+            collate_fn=MultitaskWeedsDataset.collate_fn
         )
         print('load data finished')
-    
     if rank in [-1, 0]:
         if cfg.NEED_AUTOANCHOR:
             logger.info("begin check anchors")
@@ -353,12 +346,10 @@ def main():
             fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
 
             msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
-                      'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
-                      'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
-                      'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
+                      'Crop/Weed Segment: Acc({cw_seg_acc:.3f})    IOU ({cw_seg_iou:.3f})    mIOU({cw_seg_miou:.3f})\n' \
+                      'Instance Seg: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
                       'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
-                          epoch,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
-                          ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
+                          epoch,  loss=total_loss, cw_seg_acc=da_segment_results[0],cw_seg_iou=da_segment_results[1],cw_seg_miou=da_segment_results[2],
                           p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
                           t_inf=times[0], t_nms=times[1])
             logger.info(msg)

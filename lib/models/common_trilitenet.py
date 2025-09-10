@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import sys
 import math
 
-chanel_img = 3
+chanel_img = 5
 sc_ch_dict = {
 
     "none": {'p': 0,

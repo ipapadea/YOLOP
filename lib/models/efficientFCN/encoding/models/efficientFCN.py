@@ -961,6 +961,85 @@ class MultiHGDModuleTwinLiteNetv2Scaled(nn.Module):
         outputs = (x_up_conv_drivable, x_up_conv_lane)
         return outputs
 
+class MultiHGDModuleTwinLiteNetv2ScaledWeedsGalore(nn.Module):
+    def __init__(self, in_channels, center_channels, out_channels, scale=1, norm_layer=None):
+        super(MultiHGDModuleTwinLiteNetv2ScaledWeedsGalore, self).__init__()
+        self.in_channels = int(in_channels * scale)
+        self.center_channels = int(center_channels * scale)
+        self.out_channels = int(out_channels * scale)
+        self.conv_cat = nn.Sequential(
+            nn.Conv2d(self.in_channels * 3, self.out_channels, 1, bias=False),
+            norm_layer(self.out_channels),
+            nn.ReLU(inplace=True))
+        self.conv_center = nn.Sequential(
+            nn.Conv2d(self.in_channels * 3, self.center_channels, 1, bias=False),
+            norm_layer(self.center_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(self.center_channels, self.center_channels, 1, bias=False),
+            norm_layer(self.center_channels))
+        self.norm_center = nn.Sequential(
+            nn.Softmax(2))
+        self.conv_affinity0_drivable = nn.Sequential(
+            nn.Conv2d(self.in_channels * 3, self.out_channels, 1, bias=False),
+            norm_layer(self.out_channels),
+            nn.ReLU(inplace=True))
+        self.conv_affinity1_drivable = nn.Sequential(
+            nn.Conv2d(self.out_channels, self.center_channels, 1, bias=False),
+            norm_layer(self.center_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(self.center_channels, self.center_channels, 1, bias=False),
+            norm_layer(self.center_channels),
+            nn.ReLU(inplace=True))
+        self.conv_up_drivable = nn.Sequential(
+            nn.Conv2d(2 * self.out_channels, self.out_channels, 1, bias=False),
+            norm_layer(self.out_channels),
+            nn.ReLU(inplace=True))
+        self.avgpool0 = nn.AdaptiveAvgPool2d(1)
+
+        # Apply pruning
+        # self.apply(lambda module: apply_pruning(module, amount=prune_amount))
+
+    def forward(self, x, guide1, guide2):
+        n, c, h, w = x.size()
+        # n1, c1, h1, w1 = guide1.size()
+        n2, c2, h2, w2 = guide2.size()
+        x_up0 = F.interpolate(x, size=(h2, w2), mode='bilinear', align_corners=True)
+        x_up1 = F.interpolate(guide1, size=(h2, w2), mode='bilinear', align_corners=True)
+        guide1_down = F.interpolate(guide1, size=(h, w), mode='bilinear', align_corners=True)
+        guide2_down = F.interpolate(guide2, size=(h, w), mode='bilinear', align_corners=True)
+
+        x_cat = torch.cat([guide2_down, guide1_down, x], 1)
+        f_cat = self.conv_cat(x_cat)
+        f_center = self.conv_center(x_cat)
+        f_cat = f_cat.view(n, self.out_channels, h * w)
+        f_center_norm = f_center.view(n, self.center_channels, h * w)
+        f_center_norm = self.norm_center(f_center_norm)
+        x_center = f_cat.bmm(f_center_norm.transpose(1, 2))
+
+        f_cat = f_cat.view(n, self.out_channels, h, w)
+        f_cat_avg = self.avgpool0(f_cat)
+        value_avg = f_cat_avg.repeat(1, 1, h2, w2)
+
+        guide_cat = torch.cat([guide2, x_up1, x_up0], 1)
+        guide_cat_conv_drivable = self.conv_affinity0_drivable(guide_cat)
+        guide_cat_value_avg_drivable = guide_cat_conv_drivable + value_avg
+        f_affinity_drivable = self.conv_affinity1_drivable(guide_cat_value_avg_drivable)
+        n_aff, c_ff, h_aff, w_aff = f_affinity_drivable.size()
+        f_affinity_drivable = f_affinity_drivable.view(n_aff, c_ff, h_aff * w_aff)
+        norm_aff = ((self.center_channels) ** -.5)
+        x_up_drivable = norm_aff * x_center.bmm(f_affinity_drivable)
+        x_up_drivable = x_up_drivable.view(n, self.out_channels, h_aff, w_aff)
+
+        # Free memory before concatenation
+        # del guide_cat_value_avg_drivable, guide_cat_value_avg_lane, f_affinity_drivable, f_affinity_lane, x_center
+        # torch.cuda.empty_cache()
+        x_up_cat_drivable = torch.cat([x_up_drivable, guide_cat_conv_drivable], 1)
+        x_up_conv_drivable = self.conv_up_drivable(x_up_cat_drivable)
+        # Ensure fixed output size, e.g. 192x320
+        x_up_conv_drivable = F.interpolate(x_up_conv_drivable, size=(300, 300), mode='bilinear', align_corners=True)
+        # outputs = (x_up_conv_drivable, x_up_conv_lane)
+        # return outputs
+        return x_up_conv_drivable
 
 class MultiHGDModuleTwinLiteNetv2ScaledObjectDetection(nn.Module):
     def __init__(self, in_channels, center_channels, out_channels, scale=1, norm_layer=None):
@@ -1681,7 +1760,43 @@ class MHGDTwinLiteNet2Scaled(nn.Module):
             norm_layer(int(64 * scale)),
             nn.ReLU(inplace=True))
         self.conv40 = nn.Sequential(
-            nn.Conv2d(int(131 * scale), int(64 * scale), 1, padding=0, bias=False),
+            nn.Conv2d(int(133 * scale), int(64 * scale), 1, padding=0, bias=False),
+            # nn.Conv2d(int(128 * scale), int(64 * scale), 1, padding=0, bias=False),
+            norm_layer(int(64 * scale)),
+            nn.ReLU(inplace=True))
+        self.conv30 = nn.Sequential(
+            # nn.Conv2d(int(19 * scale), int(64 * scale), 1, padding=0, bias=False),
+            nn.Conv2d(int(32 * scale), int(64 * scale), 1, padding=0, bias=False),
+            # nn.Conv2d(int(64 * scale), int(64 * scale), 2, padding=0, bias=False),
+            norm_layer(int(64 * scale)),
+            nn.ReLU(inplace=True))
+
+        self.num_center = int(num_center * scale)
+        self.hgdmodule0 = MultiHGDModuleTwinLiteNetv2ScaledWeedsGalore(in_channels=int(64 * scale),
+                                                            center_channels=int(128 * scale),
+                                                            out_channels=int(32 * scale), norm_layer=norm_layer)
+
+    def forward(self, *inputs):
+        feat_res8, feat_res16, feat_res32 = inputs  # [0]
+        feat_32 = self.conv50(feat_res32)
+        feat_16 = self.conv40(feat_res16)
+        feat_8 = self.conv30(feat_res8)
+        outs0 = self.hgdmodule0(feat_32, feat_16, feat_8)
+
+        return outs0
+
+class MHGDTwinLiteNet2ScaledWeedsGalore(nn.Module):
+    def __init__(self, scale, num_center, norm_layer=None, up_kwargs=None):
+        super(MHGDTwinLiteNet2ScaledWeedsGalore, self).__init__()
+        if norm_layer is None:
+            norm_layer = torch.nn.BatchNorm2d  # Default normalization layer
+        self.up_kwargs = up_kwargs
+        self.conv50 = nn.Sequential(
+            nn.Conv2d(int(256 * scale), int(64 * scale), 1, padding=0, bias=False),
+            norm_layer(int(64 * scale)),
+            nn.ReLU(inplace=True))
+        self.conv40 = nn.Sequential(
+            nn.Conv2d(int(133 * scale), int(64 * scale), 1, padding=0, bias=False),
             # nn.Conv2d(int(128 * scale), int(64 * scale), 1, padding=0, bias=False),
             norm_layer(int(64 * scale)),
             nn.ReLU(inplace=True))
@@ -1705,7 +1820,6 @@ class MHGDTwinLiteNet2Scaled(nn.Module):
         outs0 = self.hgdmodule0(feat_32, feat_16, feat_8)
 
         return outs0
-
 
 class MHGDTwinLiteNet2ScaledObjectDetection(nn.Module):
     def __init__(self, in_channels, out_channels, scale, num_center, norm_layer=None, up_kwargs=None):

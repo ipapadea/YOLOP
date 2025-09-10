@@ -199,7 +199,7 @@ class MCnet(nn.Module):
     #     out.insert(0, det_out)
     #     return out
 
-    def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
+    def fuse(self):  # fuse model Conv2d() + cBatchNorm2d() layers
         for m in self.model.modules():
             if isinstance(m, RepConv):
                 m.fuse_repvgg_block()

@@ -544,22 +544,17 @@ def debug_loss_component(name, value):
 #         return loss, (
 #         lbox.item(), lobj.item(), lcls.item(), lseg_da.item(), lseg_ll.item(), liou_ll.item(), loss.item())
 
+import torch
+import torch.nn as nn
+
 class MultiHeadLoss(nn.Module):
     """
-    collect all the loss we need
+    Multi-task loss supporting instance segmentation and semantic segmentation.
     """
-
     def __init__(self, losses, cfg, lambdas=None):
-        """
-        Inputs:
-        - losses: (list)[nn.Module, nn.Module, ...]
-        - cfg: config object
-        - lambdas: (list) + IoU loss, weight for each loss
-        """
         super().__init__()
-        # lambdas: [cls, obj, iou, la_seg, ll_seg, ll_iou]
         if not lambdas:
-            lambdas = [1.0 for _ in range(len(losses) + 3)]
+            lambdas = [1.0 for _ in range(len(losses))]
         assert all(lam >= 0.0 for lam in lambdas)
 
         self.losses = nn.ModuleList(losses)
@@ -567,193 +562,141 @@ class MultiHeadLoss(nn.Module):
         self.cfg = cfg
 
     def forward(self, head_fields, head_targets, shapes, model):
-        """
-        Inputs:
-        - head_fields: (list) output from each task head
-        - head_targets: (list) ground-truth for each task head
-        - model:
-
-        Returns:
-        - total_loss: sum of all the loss
-        - head_losses: (tuple) contain all loss[loss1, loss2, ...]
-
-        """
-        # head_losses = [ll
-        #                 for l, f, t in zip(self.losses, head_fields, head_targets)
-        #                 for ll in l(f, t)]
-        #
-        # assert len(self.lambdas) == len(head_losses)
-        # loss_values = [lam * l
-        #                for lam, l in zip(self.lambdas, head_losses)
-        #                if l is not None]
-        # total_loss = sum(loss_values) if loss_values else None
-        # print(model.nc)
         total_loss, head_losses = self._forward_impl(head_fields, head_targets, shapes, model)
-
         return total_loss, head_losses
 
     def _forward_impl(self, predictions, targets, shapes, model):
         """
-
-        Args:
-            predictions: predicts of [[det_head1, det_head2, det_head3], drive_area_seg_head, lane_line_seg_head]
-            targets: gts [det_targets, segment_targets, lane_targets]
-            model:
-
-        Returns:
-            total_loss: sum of all the loss
-            head_losses: list containing losses
-
+        predictions: [ (det_preds, proto_masks), semantic_segmentation_output ]
+        targets: [ detection_targets (Tensor[N, 6]), semantic_segmentation_target ]
+                 detection_targets = (image_idx, class, x1, y1, x2, y2)
         """
+        device = predictions[1].device
         cfg = self.cfg
-        device = targets[0].device
-        lcls, lbox, lobj = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
-        tcls, tbox, indices, anchors = build_targets(cfg, predictions[0], targets[0], model)  # targets
 
-        # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
-        cp, cn = smooth_BCE(eps=0.0)
+        # ========================
+        # 1. Instance Segmentation
+        # ========================
 
-        BCEcls, BCEobj, BCEseg = self.losses
+        det_preds, proto_masks = predictions[0]
+        print(f"det_preds.shape: {det_preds[0].shape}")
 
-        # Calculate Losses
-        nt = 0  # number of targets
-        no = len(predictions[0])  # number of outputs
-        balance = [4.0, 1.0, 0.4] if no == 3 else [4.0, 1.0, 0.4, 0.1]  # P3-5 or P3-6
+        det_pred = det_preds[0]
 
-        # calculate detection loss
-        for i, pi in enumerate(predictions[0]):  # layer index, layer predictions
-            b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
-            tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
+        # Handle various det_pred shapes
+        if det_pred.ndim == 5:
+            B, A, H, W, C = det_pred.shape
+            det_pred = det_pred.view(B, A * H * W, C)
+        elif det_pred.ndim == 4 and det_pred.shape[1] > 5:
+            B, C, H, W = det_pred.shape
+            det_pred = det_pred.permute(0, 2, 3, 1).reshape(B, H * W, C)
+        elif det_pred.ndim != 3:
+            raise ValueError(f"Unsupported det_pred shape: {det_pred.shape}")
+        B, N, C = det_pred.shape
 
-            n = b.shape[0]  # number of targets
-            if n:
-                nt += n  # cumulative targets
-                ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
+        nm = proto_masks.shape[1]  # number of mask coeffs
+        num_classes = C - nm
+        print("num_classes =", num_classes)
 
-                # Regression
-                pxy = ps[:, :2].sigmoid() * 2. - 0.5
-                pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
-                pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
-                if torch.isnan(ps).any():
-                    print(f"[NaN DEBUG] ps contains NaN at i={i}")
-                if torch.isnan(anchors[i]).any():
-                    print(f"[NaN DEBUG] anchors[{i}] contains NaN")
-                if torch.isnan(pbox).any():
-                    print(f"[NaN DEBUG] pbox contains NaNs! pbox = {pbox}")
-                if torch.isnan(tbox[i]).any():
-                    print(f"[NaN DEBUG] tbox[{i}] contains NaNs! tbox = {tbox[i]}")
-                if torch.isinf(pbox).any() or torch.isinf(tbox[i]).any():
-                    print("[NaN DEBUG] Found inf in boxes!")
-                if pbox.numel() == 0 or tbox[i].numel() == 0:
-                    print(f"[NaN DEBUG] Empty box for i={i}")
-                if pbox.shape[0] == 0 or tbox[i].shape[0] == 0:
-                    print(f"[NaN DEBUG] Skipping IoU calc for i={i}, empty tensors")
-                    continue
+        mask_coeffs = det_pred[:, :, :nm]
+        class_scores = det_pred[:, :, nm:]
 
-                iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
-                lbox += (1.0 - iou).mean()  # iou loss
+        # ========================
+        # Convert YOLO Targets → Masks
+        # ========================
+        det_targets = targets[0].to(device)  # shape (N_total, 6)
+        image_indices = det_targets[:, 0].long()  # [N_total]
+        class_ids = det_targets[:, 1].long()  # [N_total]
+        boxes = det_targets[:, 2:]  # [x1, y1, x2, y2], shape (N_total, 4)
 
-                # Objectness
-                tobj[b, a, gj, gi] = (1.0 - model.gr) + model.gr * iou.detach().clamp(0).type(tobj.dtype)  # iou ratio
+        Hm, Wm = proto_masks.shape[-2:]  # Shape of prototype masks
 
-                # Classification
-                # print(model.nc)
-                if model.nc > 1:  # cls loss (only if multiple classes)
-                    t = torch.full_like(ps[:, 5:], cn, device=device)  # targets
-                    t[range(n), tcls[i]] = cp
-                    lcls += BCEcls(ps[:, 5:], t)  # BCE
-            lobj += BCEobj(pi[..., 4], tobj) * balance[i]  # obj loss
+        # Build masks
+        gt_masks = torch.zeros((B, N, Hm, Wm), dtype=torch.float32, device=device)
+        gt_classes = torch.full((B, N), -1, dtype=torch.long, device=device)  # -1 = ignore
 
-        drive_area_seg_predicts = predictions[1].view(-1)
-        drive_area_seg_targets = targets[1].view(-1)
-        lseg_da = BCEseg(drive_area_seg_predicts, drive_area_seg_targets)
+        for idx in range(det_targets.shape[0]):
+            img_idx = image_indices[idx]
+            cls = class_ids[idx]
+            x1, y1, x2, y2 = boxes[idx].round().int()
 
-        lane_line_seg_predicts = predictions[2].view(-1)
-        lane_line_seg_targets = targets[2].view(-1)
-        lseg_ll = BCEseg(lane_line_seg_predicts, lane_line_seg_targets)
+            # Clip to valid bounds
+            x1, y1 = max(x1, 0), max(y1, 0)
+            x2, y2 = min(x2, Wm - 1), min(y2, Hm - 1)
+            if x2 <= x1 or y2 <= y1:
+                continue  # Skip invalid boxes
 
-        metric = SegmentationMetric(2)
-        nb, _, height, width = targets[1].shape
-        pad_w, pad_h = shapes[0][1][1]
-        pad_w = int(pad_w)
-        pad_h = int(pad_h)
-        _, lane_line_pred = torch.max(predictions[2], 1)
-        _, lane_line_gt = torch.max(targets[2], 1)
-        lane_line_pred = lane_line_pred[:, pad_h:height - pad_h, pad_w:width - pad_w]
-        lane_line_gt = lane_line_gt[:, pad_h:height - pad_h, pad_w:width - pad_w]
-        metric.reset()
-        metric.addBatch(lane_line_pred.cpu(), lane_line_gt.cpu())
-        IoU = metric.IntersectionOverUnion()
-        liou_ll = 1 - IoU
+            # Assign first available slot in gt_masks for this image
+            slot = (gt_classes[img_idx] == -1).nonzero(as_tuple=True)[0]
+            if len(slot) == 0:
+                continue  # No slot available
+            slot = slot[0]
 
-        s = 3 / no  # output count scaling
-        lcls *= cfg.LOSS.CLS_GAIN * s * self.lambdas[0]
-        lobj *= cfg.LOSS.OBJ_GAIN * s * (1.4 if no == 4 else 1.) * self.lambdas[1]
-        lbox *= cfg.LOSS.BOX_GAIN * s * self.lambdas[2]
+            gt_masks[img_idx, slot, y1:y2, x1:x2] = 1.0
+            gt_classes[img_idx, slot] = cls
 
-        lseg_da *= cfg.LOSS.DA_SEG_GAIN * self.lambdas[3]
-        lseg_ll *= cfg.LOSS.LL_SEG_GAIN * self.lambdas[4]
-        liou_ll *= cfg.LOSS.LL_IOU_GAIN * self.lambdas[5]
+        # Compute predicted masks
+        pred_masks = torch.einsum("bnc,bchw->bnhw", mask_coeffs, proto_masks)  # [B, N, H, W]
 
-        if cfg.TRAIN.DET_ONLY or cfg.TRAIN.ENC_DET_ONLY or cfg.TRAIN.DET_ONLY:
-            lseg_da = 0 * lseg_da
-            lseg_ll = 0 * lseg_ll
-            liou_ll = 0 * liou_ll
+        # Filter valid slots (those where gt_classes != -1)
+        valid = gt_classes != -1
+        if valid.sum() == 0:
+            mask_loss = torch.tensor(0.0, device=device)
+            class_loss = torch.tensor(0.0, device=device)
+        else:
+            pred_masks_valid = pred_masks[valid]
+            gt_masks_valid = gt_masks[valid]
+            mask_loss = self.losses[0](pred_masks_valid, gt_masks_valid)
 
-        if cfg.TRAIN.SEG_ONLY or cfg.TRAIN.ENC_SEG_ONLY:
-            lcls = 0 * lcls
-            lobj = 0 * lobj
-            lbox = 0 * lbox
+            class_scores_valid = class_scores[valid]
+            gt_classes_valid = gt_classes[valid]
+            class_loss = self.losses[1](class_scores_valid, gt_classes_valid)
+        print("det_pred shape:", det_pred.shape, "nm:", nm, "C:", C)
 
-        if cfg.TRAIN.LANE_ONLY:
-            lcls = 0 * lcls
-            lobj = 0 * lobj
-            lbox = 0 * lbox
-            lseg_da = 0 * lseg_da
+        # ========================
+        # 2. Semantic Segmentation
+        # ========================
+        seg_pred = predictions[1]  # [B, num_classes, H, W]
+        seg_gt = targets[1]  # [B, H, W]
 
+        seg_loss = self.losses[2](seg_pred, seg_gt)
+        seg_gt_flat = seg_gt.view(-1)
+        seg_loss = self.losses[2](seg_loss, seg_gt_flat)
+        print("mask_loss:", mask_loss.item(), "class_loss:", class_loss.item(), "seg_loss:", seg_loss.item())
+
+        # ========================
+        # 3. Conditional logic
+        # ========================
+        if cfg.TRAIN.ENC_SEG_ONLY or cfg.TRAIN.SEG_ONLY:
+            mask_loss = 0 * mask_loss
+            class_loss = 0 * class_loss
         if cfg.TRAIN.DRIVABLE_ONLY:
-            lcls = 0 * lcls
-            lobj = 0 * lobj
-            lbox = 0 * lbox
-            lseg_ll = 0 * lseg_ll
-            liou_ll = 0 * liou_ll
+            mask_loss = 0 * mask_loss
+            class_loss = 0 * class_loss
 
-        loss = lbox + lobj + lcls + lseg_da + lseg_ll + liou_ll
-        # loss = lseg
-        # return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
-        return loss, (
-        lbox.item(), lobj.item(), lcls.item(), lseg_da.item(), lseg_ll.item(), liou_ll.item(), loss.item())
+        # ========================
+        # 4. Final Loss
+        # ========================
+        loss = (
+                self.lambdas[0] * mask_loss +
+                self.lambdas[1] * class_loss +
+                self.lambdas[2] * seg_loss
+        )
+
+        return loss, (mask_loss.item(), class_loss.item(), seg_loss.item(), loss.item())
 
 
 def get_loss(cfg, device):
     """
-    get MultiHeadLoss
-
-    Inputs:
-    -cfg: configuration use the loss_name part or 
-          function part(like regression classification)
-    -device: cpu or gpu device
-
-    Returns:
-    -loss: (MultiHeadLoss)
-
+    Returns the multi-head loss with instance + semantic segmentation.
     """
-    # class loss criteria
-    BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.CLS_POS_WEIGHT])).to(device)
-    # object loss criteria
-    BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.OBJ_POS_WEIGHT])).to(device)
-    # segmentation loss criteria
-    BCEseg = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.SEG_POS_WEIGHT])).to(device)
-    # Focal loss
-    gamma = cfg.LOSS.FL_GAMMA  # focal loss gamma
-    if gamma > 0:
-        BCEcls, BCEobj = FocalLoss(BCEcls, gamma), FocalLoss(BCEobj, gamma)
-    # CElane = nn.CrossEntropyLoss().to(device)
+    BCE_mask = nn.BCEWithLogitsLoss().to(device)
+    CE_class = nn.CrossEntropyLoss().to(device)
+    BCE_seg = nn.CrossEntropyLoss(ignore_index=255)  #nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.SEG_POS_WEIGHT])).to(device)
 
-    loss_list = [BCEcls, BCEobj, BCEseg] #    loss_list = [BCEcls, BCEobj, BCEseg, CElane]
+    loss_list = [BCE_mask, CE_class, BCE_seg]
+    return MultiHeadLoss(loss_list, cfg=cfg, lambdas=cfg.LOSS.MULTI_HEAD_LAMBDA)
 
-    loss = MultiHeadLoss(loss_list, cfg=cfg, lambdas=cfg.LOSS.MULTI_HEAD_LAMBDA)
-    return loss
 
 # example
 # class L1_Loss(nn.Module)

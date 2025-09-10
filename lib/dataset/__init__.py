@@ -3,5 +3,5 @@
 # from .DemoDataset import LoadImages, LoadStreams
 
 from .bdd import BddDataset
-from .AutoDriveDataset import AutoDriveDataset
+from .AutoDriveDataset import MultitaskWeedsDataset
 from .DemoDataset import LoadImages, LoadStreams
