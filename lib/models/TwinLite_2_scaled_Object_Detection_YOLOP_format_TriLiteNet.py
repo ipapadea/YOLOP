@@ -353,7 +353,7 @@ class Proto(nn.Module):
 class Segment(nn.Module):
     stride = None  # Set later based on input/output scale
 
-    def __init__(self, nc=2, nm=32, npr=39, ch=()):  # ch = [128, 256, 512]
+    def __init__(self, nc=3, nm=32, npr=39, ch=()):  # ch = [128, 256, 512]
         super().__init__()
         self.nc = nc
         self.nm = nm
@@ -409,6 +409,8 @@ class Segment(nn.Module):
 
 
 def TwinLiteNet2Scaled(model_cfg):
+    print("[DEBUG] model_cfg passed to Segment:", model_cfg)
+
     TwinLiteNet2Scaled = [
         [2, [4]],
 
@@ -419,8 +421,7 @@ def TwinLiteNet2Scaled(model_cfg):
         [-1, DetectHead, [model_cfg]],  # Output of encoder must be a tuple/list of C3, C4, C5
 
         # Detection Head
-        [-1, Segment, [
-            model_cfg.get('nc', 3),  # number of instance classes
+        [-1, Segment, [3,  # number of instance classes
             model_cfg.get('nm', 32),  # number of mask coefficients
             model_cfg.get('npr', 39),  # number of prototype masks
             [model_cfg['chanels'][3]] * 3  # channels for P3, P4, P5
@@ -561,6 +562,10 @@ def get_net(cfg, **kwargs):
     model_cfg = sc_ch_dict['base']
     m_block_cfg = TwinLiteNet2Scaled(model_cfg)
     model = MCnet(m_block_cfg, **kwargs)
+    # print("[DEBUG] Segment head configuration:")
+    # print("  nc =", model.model[model.detector_index].nc)
+    # print("  nm =", model.model[model.detector_index].nm)
+    # print("  no =", model.model[model.detector_index].no)
     return model
 
 

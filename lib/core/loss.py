@@ -579,7 +579,7 @@ class MultiHeadLoss(nn.Module):
         # ========================
 
         det_preds, proto_masks = predictions[0]
-        print(f"det_preds.shape: {det_preds[0].shape}")
+        # print(f"det_preds.shape: {det_preds[0].shape}")
 
         det_pred = det_preds[0]
 
@@ -594,19 +594,22 @@ class MultiHeadLoss(nn.Module):
             raise ValueError(f"Unsupported det_pred shape: {det_pred.shape}")
         B, N, C = det_pred.shape
 
-        nm = proto_masks.shape[1]  # number of mask coeffs
-        num_classes = C - nm
-        print("num_classes =", num_classes)
+        nm = cfg.MODEL.NM  # Set this explicitly from your config
+        nc = cfg.MODEL.NC
 
-        mask_coeffs = det_pred[:, :, :nm]
-        class_scores = det_pred[:, :, nm:]
+
+        # mask_coeffs = det_pred[:, :, :nm]
+        # class_scores = det_pred[:, :, nm:]
+        mask_coeffs = det_pred[:, :, 5 + self.cfg.MODEL.NC:]  # or 5 + nc if it's passed explicitly
+        class_scores = det_pred[:, :, 5:5 + self.cfg.MODEL.NC]
 
         # ========================
         # Convert YOLO Targets → Masks
         # ========================
         det_targets = targets[0].to(device)  # shape (N_total, 6)
         image_indices = det_targets[:, 0].long()  # [N_total]
-        class_ids = det_targets[:, 1].long()  # [N_total]
+        # class_ids = det_targets[:, 1].long()  # [N_total]
+        class_ids = det_targets[:, 1].long() - 1  # in your loss function
         boxes = det_targets[:, 2:]  # [x1, y1, x2, y2], shape (N_total, 4)
 
         Hm, Wm = proto_masks.shape[-2:]  # Shape of prototype masks
@@ -650,8 +653,13 @@ class MultiHeadLoss(nn.Module):
 
             class_scores_valid = class_scores[valid]
             gt_classes_valid = gt_classes[valid]
+            # print("class_scores_valid.shape =", class_scores_valid.shape)
+            # print("gt_classes_valid.min() =", gt_classes_valid.min().item(), "max =", gt_classes_valid.max().item())
+            # print(torch.unique(gt_classes_valid))
+
+            # print("num_classes =", class_scores_valid.shape[1])
             class_loss = self.losses[1](class_scores_valid, gt_classes_valid)
-        print("det_pred shape:", det_pred.shape, "nm:", nm, "C:", C)
+        # print("det_pred shape:", det_pred.shape, "nm:", nm, "C:", C)
 
         # ========================
         # 2. Semantic Segmentation
@@ -660,9 +668,9 @@ class MultiHeadLoss(nn.Module):
         seg_gt = targets[1]  # [B, H, W]
 
         seg_loss = self.losses[2](seg_pred, seg_gt)
-        seg_gt_flat = seg_gt.view(-1)
-        seg_loss = self.losses[2](seg_loss, seg_gt_flat)
-        print("mask_loss:", mask_loss.item(), "class_loss:", class_loss.item(), "seg_loss:", seg_loss.item())
+        # seg_gt_flat = seg_gt.view(-1)
+        # seg_loss = self.losses[2](seg_loss, seg_gt_flat)
+        # print("mask_loss:", mask_loss.item(), "class_loss:", class_loss.item(), "seg_loss:", seg_loss.item())
 
         # ========================
         # 3. Conditional logic

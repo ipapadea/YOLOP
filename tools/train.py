@@ -338,7 +338,7 @@ def main():
         # evaluate on validation set
         if (epoch % cfg.TRAIN.VAL_FREQ == 0 or epoch == cfg.TRAIN.END_EPOCH) and rank in [-1, 0]:
             # print('validate')
-            da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
+            da_segment_results,detect_results, total_loss,maps, times = validate(
                 epoch,cfg, valid_loader, valid_dataset, model, criterion,
                 final_output_dir, tb_log_dir, writer_dict,
                 logger, device, rank

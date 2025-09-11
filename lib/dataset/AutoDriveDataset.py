@@ -34,6 +34,20 @@ class MultitaskWeedsDataset(Dataset):
     def __len__(self):
         return len(self.image_ids)
 
+    def _remap_semantic_labels(self, semantic_mask):
+        """
+        Remap original semantic labels to 3-class:
+        - 0: background → 0
+        - 1: crop       → 1
+        - 2-5: weeds    → 2
+        """
+        remapped = semantic_mask.copy()
+        remapped[remapped == 2] = 2
+        remapped[remapped == 3] = 2
+        remapped[remapped == 4] = 2
+        remapped[remapped == 5] = 2
+        return remapped
+
     def __getitem__(self, index):
         image_id = self.image_ids[index]
         image_info = self.coco.loadImgs(image_id)[0]
@@ -57,6 +71,7 @@ class MultitaskWeedsDataset(Dataset):
         # Load semantic segmentation mask
         semantic_path = self.semantic_dir / f"{base_name}.png"
         semantic = np.array(Image.open(semantic_path).convert('L'), dtype=np.int64)
+        semantic = self._remap_semantic_labels(semantic)
 
         # Load instance annotations (bounding boxes and class IDs)
         ann_ids = self.coco.getAnnIds(imgIds=image_id)

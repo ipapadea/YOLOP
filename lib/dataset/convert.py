@@ -16,7 +16,7 @@
 # 'tl_yellow': 9, 'tl_none': 10, 'traffic sign': 11, 'train': 12}
 id_dict_single = {'car': 0, 'bus': 1, 'truck': 2,'train': 3}
 # id_dict = {'car': 0, 'bus': 1, 'truck': 2}
-id_dict = {'crop': 0, 'weed': 1}
+id_dict = {'background': 0 , 'crop': 1, 'weed': 2}
 def convert(size, box):
     dw = 1./(size[0])
     dh = 1./(size[1])

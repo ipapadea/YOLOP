@@ -1,18 +1,17 @@
 import os
 from yacs.config import CfgNode as CN
 
-
 _C = CN()
 
 _C.LOG_DIR = '../weedsgalore_runs'
 _C.GPUS = (0,)
-_C.WORKERS = 8
+_C.WORKERS = 0
 _C.PIN_MEMORY = False
 _C.PRINT_FREQ = 20
 _C.AUTO_RESUME = True       # Resume from the last training interrupt
 _C.NEED_AUTOANCHOR = False #      # Re-select the prior anchor(k-means)    When training from scratch (epoch=0), set it to be ture!
 _C.DEBUG = False
-_C.num_seg_class = 2
+_C.num_seg_class = 3
 
 # Cudnn related params
 _C.CUDNN = CN()
@@ -30,7 +29,8 @@ _C.MODEL.PRETRAINED = ""
 _C.MODEL.PRETRAINED_DET = ""
 _C.MODEL.IMAGE_SIZE = [600, 600]  # width * height, ex: 192 * 256
 _C.MODEL.EXTRA = CN(new_allowed=True)
-
+_C.MODEL.NC = 3
+_C.MODEL.NM = 32
 
 # loss params
 _C.LOSS = CN(new_allowed=True)
@@ -50,7 +50,7 @@ _C.LOSS.LL_IOU_GAIN = 0.2 # lane line iou loss gain
 
 # DATASET related params
 _C.DATASET = CN(new_allowed=True)
-_C.DATASET.DATAROOT = r'C:\Users\ilpap\Downloads\phd\camesense\icassp\weedsgalore-dataset\weedsgalore-dataset\weedsgalore_bdd100k'       # the path of images folder
+_C.DATASET.DATAROOT = r'C:\Users\ilpap\Downloads\phd\precision_agriculture\weedsgalore-dataset\weedsgalore-dataset\weedsgalore_bdd100k'      # the path of images folder
 _C.DATASET.LABELROOT = 'instances'      # the path of det_annotations folder
 _C.DATASET.MASKROOT = 'semantics'                # the path of da_seg_annotations folder
 _C.DATASET.DATASET = 'MultitaskWeedsDataset'
