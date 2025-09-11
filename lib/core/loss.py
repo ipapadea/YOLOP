@@ -577,71 +577,75 @@ class MultiHeadLoss(nn.Module):
         # ========================
         # 1. Instance Segmentation
         # ========================
+        det_pred, proto_masks = predictions[0]
 
-        det_preds, proto_masks = predictions[0]
-        # print(f"det_preds.shape: {det_preds[0].shape}")
+        # Flatten det_pred depending on type
+        if isinstance(det_pred, (list, tuple)):
+            # YOLO-style multi-scale list of feature maps
+            det_pred = torch.cat([
+                p.view(p.size(0), -1, p.size(-1))  # [B, N_i, C]
+                for p in det_pred
+            ], dim=1)  # -> [B, N_total, C]
 
-        det_pred = det_preds[0]
-
-        # Handle various det_pred shapes
-        if det_pred.ndim == 5:
+        elif det_pred.ndim == 5:
             B, A, H, W, C = det_pred.shape
             det_pred = det_pred.view(B, A * H * W, C)
+
         elif det_pred.ndim == 4 and det_pred.shape[1] > 5:
             B, C, H, W = det_pred.shape
             det_pred = det_pred.permute(0, 2, 3, 1).reshape(B, H * W, C)
+
         elif det_pred.ndim != 3:
             raise ValueError(f"Unsupported det_pred shape: {det_pred.shape}")
-        B, N, C = det_pred.shape
 
-        nm = cfg.MODEL.NM  # Set this explicitly from your config
+        B, N, C = det_pred.shape
+        nm = cfg.MODEL.NM
         nc = cfg.MODEL.NC
 
-
-        # mask_coeffs = det_pred[:, :, :nm]
-        # class_scores = det_pred[:, :, nm:]
-        mask_coeffs = det_pred[:, :, 5 + self.cfg.MODEL.NC:]  # or 5 + nc if it's passed explicitly
-        class_scores = det_pred[:, :, 5:5 + self.cfg.MODEL.NC]
+        # Split into box/obj, class logits, mask coeffs
+        box_obj = det_pred[:, :, :5]  # [B, N, 5]
+        class_scores = det_pred[:, :, 5:5 + nc]  # [B, N, nc]
+        mask_coeffs = det_pred[:, :, 5 + nc:5 + nc + nm]  # [B, N, nm]
 
         # ========================
-        # Convert YOLO Targets → Masks
+        # Build GT masks
         # ========================
         det_targets = targets[0].to(device)  # shape (N_total, 6)
         image_indices = det_targets[:, 0].long()  # [N_total]
-        # class_ids = det_targets[:, 1].long()  # [N_total]
-        class_ids = det_targets[:, 1].long() - 1  # in your loss function
-        boxes = det_targets[:, 2:]  # [x1, y1, x2, y2], shape (N_total, 4)
+        class_ids = det_targets[:, 1].long() - 1  # shift to [0, nc-1]
+        boxes = det_targets[:, 2:]  # [N_total, 4]
 
-        Hm, Wm = proto_masks.shape[-2:]  # Shape of prototype masks
-
-        # Build masks
+        Hm, Wm = proto_masks.shape[-2:]
         gt_masks = torch.zeros((B, N, Hm, Wm), dtype=torch.float32, device=device)
-        gt_classes = torch.full((B, N), -1, dtype=torch.long, device=device)  # -1 = ignore
+        gt_classes = torch.full((B, N), -1, dtype=torch.long, device=device)
 
         for idx in range(det_targets.shape[0]):
             img_idx = image_indices[idx]
             cls = class_ids[idx]
             x1, y1, x2, y2 = boxes[idx].round().int()
 
-            # Clip to valid bounds
+            # Clip to bounds
             x1, y1 = max(x1, 0), max(y1, 0)
             x2, y2 = min(x2, Wm - 1), min(y2, Hm - 1)
             if x2 <= x1 or y2 <= y1:
-                continue  # Skip invalid boxes
+                continue
 
-            # Assign first available slot in gt_masks for this image
+            # Find free slot
             slot = (gt_classes[img_idx] == -1).nonzero(as_tuple=True)[0]
             if len(slot) == 0:
-                continue  # No slot available
+                continue
             slot = slot[0]
 
             gt_masks[img_idx, slot, y1:y2, x1:x2] = 1.0
             gt_classes[img_idx, slot] = cls
 
+        # ========================
         # Compute predicted masks
-        pred_masks = torch.einsum("bnc,bchw->bnhw", mask_coeffs, proto_masks)  # [B, N, H, W]
+        # ========================
+        # mask_coeffs [B, N, nm], proto_masks [B, nm, H, W] -> [B, N, H, W]
+        pred_masks = torch.einsum("bnc,bchw->bnhw", mask_coeffs, proto_masks)
 
-        # Filter valid slots (those where gt_classes != -1)
+        # Losses
         valid = gt_classes != -1
         if valid.sum() == 0:
             mask_loss = torch.tensor(0.0, device=device)
@@ -653,24 +657,14 @@ class MultiHeadLoss(nn.Module):
 
             class_scores_valid = class_scores[valid]
             gt_classes_valid = gt_classes[valid]
-            # print("class_scores_valid.shape =", class_scores_valid.shape)
-            # print("gt_classes_valid.min() =", gt_classes_valid.min().item(), "max =", gt_classes_valid.max().item())
-            # print(torch.unique(gt_classes_valid))
-
-            # print("num_classes =", class_scores_valid.shape[1])
             class_loss = self.losses[1](class_scores_valid, gt_classes_valid)
-        # print("det_pred shape:", det_pred.shape, "nm:", nm, "C:", C)
 
         # ========================
         # 2. Semantic Segmentation
         # ========================
         seg_pred = predictions[1]  # [B, num_classes, H, W]
         seg_gt = targets[1]  # [B, H, W]
-
         seg_loss = self.losses[2](seg_pred, seg_gt)
-        # seg_gt_flat = seg_gt.view(-1)
-        # seg_loss = self.losses[2](seg_loss, seg_gt_flat)
-        # print("mask_loss:", mask_loss.item(), "class_loss:", class_loss.item(), "seg_loss:", seg_loss.item())
 
         # ========================
         # 3. Conditional logic
