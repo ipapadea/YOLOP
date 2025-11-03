@@ -13,3 +13,13 @@ inference/
 /tools/runs_twinlitenet_with_yolopv3/
 /tools/runs/
 /tools/inference/
+/submission/
+/runs/
+/from_scratch_amp_disabled/
+/tools/inference/
+/tools/runs/
+/tools/phenobench_tries/
+/tools/runs_twinlitenet_with_yolopv3/
+/tools/runs_twinlitenet_with_yolopv3_encoder_reduced_with_dws/
+/tools/runs_twinlitenet_with_yolopv3_extendedencoderdws_512_max_channels/
+/only_da_and_lls/

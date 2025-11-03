@@ -4,7 +4,7 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
-_C.LOG_DIR = 'runs/twinlitenet_with_trilitenet_NMS_CONF_THRESHOLD_0.25_NMS_IOU_THRESHOLD_0.45'
+_C.LOG_DIR = 'runs/phenobench_cropweed_det_cropweed_seg_1024'
 _C.GPUS = (0,)
 _C.WORKERS = 8
 _C.PIN_MEMORY = False
@@ -12,7 +12,7 @@ _C.PRINT_FREQ = 20
 _C.AUTO_RESUME =False       # Resume from the last training interrupt
 _C.NEED_AUTOANCHOR = True#      # Re-select the prior anchor(k-means)    When training from scratch (epoch=0), set it to be ture!
 _C.DEBUG = False
-_C.num_seg_class = 2
+_C.num_seg_class = 3
 
 # Cudnn related params
 _C.CUDNN = CN()
@@ -28,7 +28,7 @@ _C.MODEL.STRU_WITHSHARE = False     #add share_block to segbranch
 _C.MODEL.HEADS_NAME = ['']
 _C.MODEL.PRETRAINED = ""
 _C.MODEL.PRETRAINED_DET = ""
-_C.MODEL.IMAGE_SIZE = [384, 640]  # width * height, ex: 192 * 256
+_C.MODEL.IMAGE_SIZE = [1024, 1024]  # width * height, ex: 192 * 256
 _C.MODEL.EXTRA = CN(new_allowed=True)
 
 
@@ -36,9 +36,9 @@ _C.MODEL.EXTRA = CN(new_allowed=True)
 _C.LOSS = CN(new_allowed=True)
 _C.LOSS.LOSS_NAME = ''
 _C.LOSS.MULTI_HEAD_LAMBDA = None
-_C.LOSS.FL_GAMMA = 0.0  # focal loss gamma
-_C.LOSS.CLS_POS_WEIGHT = 1.0  # classification loss positive weights
-_C.LOSS.OBJ_POS_WEIGHT = 1.0  # object loss positive weights
+_C.LOSS.FL_GAMMA = 1.5#0.0  # focal loss gamma
+_C.LOSS.CLS_POS_WEIGHT = 3.0  # classification loss positive weights
+_C.LOSS.OBJ_POS_WEIGHT = 1.5 #1.0  # object loss positive weights
 _C.LOSS.SEG_POS_WEIGHT = 1.0  # segmentation loss positive weights
 _C.LOSS.BOX_GAIN = 0.05  # box loss gain
 _C.LOSS.CLS_GAIN = 0.5  # classification loss gain
@@ -50,16 +50,16 @@ _C.LOSS.LL_IOU_GAIN = 0.2 # lane line iou loss gain
 
 # DATASET related params
 _C.DATASET = CN(new_allowed=True)
-_C.DATASET.DATAROOT = '/media/beast/Storage/ilias/jim_pap/YOLOP/data/images'       # the path of images folder
-_C.DATASET.LABELROOT = '/media/beast/Storage/ilias/jim_pap/YOLOP/data/det_annotations'      # the path of det_annotations folder
-_C.DATASET.MASKROOT = '/media/beast/Storage/ilias/jim_pap/YOLOP/data/da_seg_annotations'                # the path of da_seg_annotations folder
-_C.DATASET.LANEROOT = '/media/beast/Storage/ilias/jim_pap/YOLOP/data/ll_seg_annotations'               # the path of ll_seg_annotations folder            # the path of ll_seg_annotations folder
+_C.DATASET.DATAROOT = '/media/beast/Storage/ilias/precision_agriculture/PhenoBench_bdd100k_style/images'       # the path of images folder
+_C.DATASET.LABELROOT = '/media/beast/Storage/ilias/precision_agriculture/PhenoBench_bdd100k_style/crop_weed_det_annotations'      # the path of det_annotations folder
+_C.DATASET.MASKROOT = '/media/beast/Storage/ilias/precision_agriculture/PhenoBench_bdd100k_style/plants_seg_annotations'                # the path of da_seg_annotations folder
+# _C.DATASET.LANEROOT = '/media/beast/Storage/ilias/jim_pap/YOLOP/data/ll_seg_annotations'               # the path of ll_seg_annotations folder            # the path of ll_seg_annotations folder
 _C.DATASET.DATASET = 'BddDataset'
 _C.DATASET.TRAIN_SET = 'train'
 _C.DATASET.TEST_SET = 'val'
-_C.DATASET.DATA_FORMAT = 'jpg'
+_C.DATASET.DATA_FORMAT = 'png'
 _C.DATASET.SELECT_DATA = False
-_C.DATASET.ORG_IMG_SIZE = [720, 1280]
+_C.DATASET.ORG_IMG_SIZE = [1024, 1024]
 
 # training data augmentation
 _C.DATASET.FLIP = True
@@ -90,10 +90,10 @@ _C.TRAIN.GAMMA1 = 0.99
 _C.TRAIN.GAMMA2 = 0.0
 
 _C.TRAIN.BEGIN_EPOCH = 0
-_C.TRAIN.END_EPOCH = 240
+_C.TRAIN.END_EPOCH = 300
 
 _C.TRAIN.VAL_FREQ = 1
-_C.TRAIN.BATCH_SIZE_PER_GPU = 12
+_C.TRAIN.BATCH_SIZE_PER_GPU = 4
 _C.TRAIN.SHUFFLE = True
 
 _C.TRAIN.IOU_THRESHOLD = 0.2
@@ -118,7 +118,7 @@ _C.TRAIN.PLOT = True                #
 
 # testing
 _C.TEST = CN(new_allowed=True)
-_C.TEST.BATCH_SIZE_PER_GPU = 12
+_C.TEST.BATCH_SIZE_PER_GPU = 4
 _C.TEST.MODEL_FILE = ''
 _C.TEST.SAVE_JSON = False
 _C.TEST.SAVE_TXT = False
@@ -138,7 +138,11 @@ def update_config(cfg, args):
         cfg.LOG_DIR = args.logDir
     
     # if args.conf_thres:
-    #     cfg.TEST.NMS_CONF_THRESHOLD = args.conf_thres
+    #     cfg.TEST.NMS_CONF_THREpackages/torch/nn/functional.py", line 2421, in batch_norm
+    #     return torch.batch_norm(
+    # RuntimeError: CUDA out of memory. Tried to allocate 64.00 MiB (GPU 0; 11.76 GiB total capacity; 9.90 GiB already allocated; 47.88 MiB free; 10.05 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+    #
+    # Process finished with exit code 1SHOLD = args.conf_thres
 
     # if args.iou_thres:
     #     cfg.TEST.NMS_IOU_THRESHOLD = args.iou_thres

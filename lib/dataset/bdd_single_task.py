@@ -32,8 +32,8 @@ class BddDataset(AutoDriveDataset):
         # for i, label in enumerate(tqdm(list(self.label_list))):
         for label in tqdm(list(self.label_list)):
             label_path = str(label)
-            label_path = label_path.replace(str(self.img_root), str(self.label_root)).replace(".jpg", ".json")
-            image_path = label_path.replace(str(self.label_root), str(self.img_root)).replace(".json", ".jpg")
+            label_path = label_path.replace(str(self.img_root), str(self.label_root)).replace(".png", ".json")
+            image_path = label_path.replace(str(self.label_root), str(self.img_root)).replace(".json", ".png")
             with open(label_path, 'r') as f:
                 label = json.load(f)
             data = label['frames'][0]['objects']

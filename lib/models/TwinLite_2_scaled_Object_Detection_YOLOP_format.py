@@ -35,7 +35,7 @@ from lib.models.TwinLite_2_scaled_Object_Detection import ESPNet2_Encoder_scaled
 # ]
 
 TwinLiteNet2Scaled = [
-    [3, 5, 6],
+    [3, 5],
 
     # Backbone
     [-1, ESPNet2_Encoder_scaledExtended, [5, 3, 1.0]],
@@ -47,15 +47,15 @@ TwinLiteNet2Scaled = [
     [-1, Repconv_Block, []],
 
     # Detection Head
-    [-1, IDetect, [1, [[4.15629, 11.41984, 5.94761, 16.46950, 8.18673, 23.52688],
+    [-1, IDetect, [2, [[4.15629, 11.41984, 5.94761, 16.46950, 8.18673, 23.52688],
                        [12.04416, 29.51737, 16.35089, 41.95507, 24.17928, 57.18741],
                        [33.29597, 78.16243, 47.86408, 108.28889, 36.33312, 189.21414],
                        [73.09806, 144.64581, 101.18080, 253.37000, 136.02821, 408.82248]], [128, 256, 512, 1024]]],
 
     # DA & LLS Heads
     [0, MHGDTwinLiteNet2Scaled, [1, 64]],
-    [-1, UPx2_scaled, [32, 2]],
-    [-2, UPx2_scaled, [32, 2]],
+    [-1, UPx2_scaled, [32, 3]]
+    # [-2, UPx2_scaled, [32, 2]],
 ]
 
 
@@ -63,7 +63,7 @@ class MCnet(nn.Module):
     def __init__(self, block_cfg, **kwargs):
         super(MCnet, self).__init__()
         layers, save = [], []
-        self.nc = 1
+        self.nc = 2
         self.detector_index = -1
         # 27
         self.det_out_idx = block_cfg[0][0]
@@ -88,7 +88,7 @@ class MCnet(nn.Module):
 
         self.model, self.save = nn.Sequential(*layers), sorted(save)
         self.names = [str(i) for i in range(self.nc)]
-
+        self.names = {0: 'crop', 1: 'weed'}
         # set stride、anchor for detector
         Detector = self.model[self.detector_index]  # detector
         if isinstance(Detector, IDetect):
