@@ -4,9 +4,9 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
-_C.LOG_DIR = 'runs/phenobench_cropweed_det_cropweed_seg_1024'
+_C.LOG_DIR = '../yolopv3_phenobench_cropweed_det_cropweed_seg_1024_bs_2'
 _C.GPUS = (0,)
-_C.WORKERS = 8
+_C.WORKERS = 0 #8
 _C.PIN_MEMORY = False
 _C.PRINT_FREQ = 20
 _C.AUTO_RESUME =False       # Resume from the last training interrupt
@@ -39,7 +39,7 @@ _C.LOSS.MULTI_HEAD_LAMBDA = None
 _C.LOSS.FL_GAMMA = 1.5#0.0  # focal loss gamma
 _C.LOSS.CLS_POS_WEIGHT = 3.0  # classification loss positive weights
 _C.LOSS.OBJ_POS_WEIGHT = 1.5 #1.0  # object loss positive weights
-_C.LOSS.SEG_POS_WEIGHT = 1.0  # segmentation loss positive weights
+_C.LOSS.SEG_POS_WEIGHT = [1.0, 1.0, 4.0]  # segmentation loss positive weights
 _C.LOSS.BOX_GAIN = 0.05  # box loss gain
 _C.LOSS.CLS_GAIN = 0.5  # classification loss gain
 _C.LOSS.OBJ_GAIN = 1.0  # object loss gain
@@ -93,7 +93,7 @@ _C.TRAIN.BEGIN_EPOCH = 0
 _C.TRAIN.END_EPOCH = 300
 
 _C.TRAIN.VAL_FREQ = 1
-_C.TRAIN.BATCH_SIZE_PER_GPU = 4
+_C.TRAIN.BATCH_SIZE_PER_GPU = 2
 _C.TRAIN.SHUFFLE = True
 
 _C.TRAIN.IOU_THRESHOLD = 0.2
@@ -118,7 +118,7 @@ _C.TRAIN.PLOT = True                #
 
 # testing
 _C.TEST = CN(new_allowed=True)
-_C.TEST.BATCH_SIZE_PER_GPU = 4
+_C.TEST.BATCH_SIZE_PER_GPU = 2
 _C.TEST.MODEL_FILE = ''
 _C.TEST.SAVE_JSON = False
 _C.TEST.SAVE_TXT = False

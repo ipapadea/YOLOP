@@ -12,7 +12,7 @@ from torch.nn import Upsample
 from lib.utils import check_anchor_order
 from lib.core.evaluate import SegmentationMetric
 from lib.utils.utils import time_synchronized
-from lib.models.common_yolopv3 import GhostConv, RepConv, PaFPNELAN_C2, Conv, seg_head, PSA_p
+from lib.models.common_yolopv3 import GhostConv, RepConv, PaFPNELAN_C2, Conv, seg_head, PSA_p, PaFPNELAN_Ghost_C2_v2
 from lib.models.common_yolopv3 import ELANBlock_Head, FPN_C5, FPN_C2, ELANBlock_Head_Ghost, Repconv_Block, ELANNet, \
     PaFPNELAN_Ghost_C2, IDetect, LitePAN
 from lib.models.TwinLite_2_scaled_Object_Detection import ESPNet2_Encoder_scaledExtended, MHGDTwinLiteNet2Scaled, UPx2_scaled
@@ -41,7 +41,7 @@ TwinLiteNet2Scaled = [
     [-1, ESPNet2_Encoder_scaledExtended, [5, 3, 1.0]],
 
     # Neck edw me to litepan na ksanadw me to -1 h to 0 ti ginetai
-    [-1, PaFPNELAN_Ghost_C2, []],  # Output of encoder must be a tuple/list of C3, C4, C5
+    [-1, PaFPNELAN_Ghost_C2_v2, []],  # Output of encoder must be a tuple/list of C3, C4, C5
 
     # Repconv_Block
     [-1, Repconv_Block, []],

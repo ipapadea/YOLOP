@@ -41,13 +41,14 @@ def show_seg_result(img, result, index, epoch, save_dir=None, is_ll=False,palett
         for label, color in enumerate(palette):
             color_seg[result == label, :] = color
     else:
-        color_area = np.zeros((result[0].shape[0], result[0].shape[1], 3), dtype=np.uint8)
-        
+        # color_area = np.zeros((result[0].shape[0], result[0].shape[1], 3), dtype=np.uint8)
+        color_area = np.zeros((result.shape[0], result.shape[1], 3), dtype=np.uint8)
+
         # for label, color in enumerate(palette):
         #     color_area[result[0] == label, :] = color
 
-        color_area[result[0] == 1] = [0, 255, 0]
-        color_area[result[1] ==1] = [255, 0, 0]
+        color_area[result == 1] = [0, 255, 0]
+        # color_area[result[1] ==1] = [255, 0, 0]
         color_seg = color_area
 
     # convert to BGR

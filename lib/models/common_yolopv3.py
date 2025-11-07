@@ -1196,7 +1196,7 @@ class PaFPNELAN_C2(nn.Module):
 
 
 # PaFPN-ELAN_Ghost (YOLOv7's)
-class PaFPNELAN_Ghost_C2(nn.Module):
+class PaFPNELAN_Ghost_C2_v2(nn.Module):
     def __init__(self,
                  # in_dims=[256, 512, 1024, 1024],
                  out_dim=[128, 256, 512, 1024],
@@ -1204,7 +1204,7 @@ class PaFPNELAN_Ghost_C2(nn.Module):
                  # out_dim=[64, 128, 256, 512],
 
                  act=True):
-        super(PaFPNELAN_Ghost_C2, self).__init__()
+        super(PaFPNELAN_Ghost_C2_v2, self).__init__()
         self.in_dims = in_dims
         self.out_dim = out_dim
         c2, c3, c4, c5 = in_dims
@@ -1293,6 +1293,99 @@ class PaFPNELAN_Ghost_C2(nn.Module):
 
         return c8, c16, c17, c20, c23, c26
 
+class PaFPNELAN_Ghost_C2(nn.Module):
+    def __init__(self,
+                 in_dims=[256, 512, 1024, 1024],
+                 out_dim=[128, 256, 512, 1024],
+                 act=True):
+        super(PaFPNELAN_Ghost_C2, self).__init__()
+        self.in_dims = in_dims
+        self.out_dim = out_dim
+        c2, c3, c4, c5 = in_dims
+        # top dwon
+        ## P5 -> P4
+        self.cv1 = GhostConv(c5//2, 256, k=1, act=act)
+        self.cv2 = GhostConv(c4, 256, k=1, act=act)
+        self.head_elan_1 = ELANBlock_Head_Ghost(in_dim=512,
+                                     out_dim=256,
+                                     act=act)
+        # P4 -> P3
+        self.cv3 = GhostConv(256, 128, k=1, act=act)
+        self.cv4 = GhostConv(c3, 128, k=1, act=act)
+        self.head_elan_2 = ELANBlock_Head_Ghost(in_dim=256,
+                                     out_dim=128,  # 128
+                                     act=act)
+
+        # P3 -> P2
+        self.cv5 = GhostConv(128, 64, k=1, act=act)
+        self.cv6 = GhostConv(c2, 64, k=1, act=act)
+        self.head_elan_3 = ELANBlock_Head_Ghost(in_dim=128,
+                                     out_dim=64,  # 128
+                                     act=act)
+
+        # bottom up
+        # P2 -> P3
+        self.mp0 = DownSample_Head_Ghost(64, act=act)
+        self.head_elan_4 = ELANBlock_Head_Ghost(in_dim=256,
+                                     out_dim=128,  # 256
+                                     act=act)
+
+        # P3 -> P4
+        self.mp1 = DownSample_Head_Ghost(128, act=act)
+        self.head_elan_5 = ELANBlock_Head_Ghost(in_dim=512,
+                                     out_dim=256,  # 256
+                                     act=act)
+        # P4 -> P5
+        self.mp2 = DownSample_Head_Ghost(256, act=act)
+        self.head_elan_6 = ELANBlock_Head_Ghost(in_dim=1024,
+                                     out_dim=512,  # 512
+                                     act=act)
+
+        self.SPPCSPC = GhostSPPCSPC(c5, 512)
+
+    def forward(self, features):
+        # c3, c4, c5
+        c2, c3, c4, c5 = features
+
+        # SPP Module
+        c5 = self.SPPCSPC(c5)
+
+        # Top down
+        ## P5 -> P4
+        c6 = self.cv1(c5)
+        c7 = F.interpolate(c6, scale_factor=2.0)
+        c8 = torch.cat([c7, self.cv2(c4)], dim=1)
+        c9 = self.head_elan_1(c8)
+
+        ## P4 -> P3
+        c10 = self.cv3(c9)
+        c11 = F.interpolate(c10, scale_factor=2.0)
+        c12 = torch.cat([c11, self.cv4(c3)], dim=1)
+        c13 = self.head_elan_2(c12)
+
+        ## P3 -> P2
+        c14 = self.cv5(c13)
+        c15 = F.interpolate(c14, scale_factor=2.0)
+        c16 = torch.cat([c15, self.cv6(c2)], dim=1)
+        c17 = self.head_elan_3(c16)
+
+        # Bottom up
+        # p2 -> P3
+        c18 = self.mp0(c17)
+        c19 = torch.cat([c18, c13], dim=1)
+        c20 = self.head_elan_4(c19)
+
+        # P3 -> P4
+        c21 = self.mp1(c20)
+        c22 = torch.cat([c21, c9], dim=1)
+        c23 = self.head_elan_5(c22)
+
+        # P4 -> P5
+        c24 = self.mp2(c23)
+        c25 = torch.cat([c24, c5], dim=1)
+        c26 = self.head_elan_6(c25)
+
+        return c8, c16, c17, c20, c23, c26
 
 class Repconv_Block(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
@@ -1624,22 +1717,34 @@ class FPN_C5(nn.Module):
         return n3
 
 
+# class seg_head(nn.Module):
+#     # Concatenate a list of tensors along dimension
+#     def __init__(self, mode='sigmoid'):
+#         super(seg_head, self).__init__()
+#         # self.upsample_1 = nn.Upsample(size, scale_factor, mode, align_corners )
+#         # self.upsample_1 = nn.Upsample(size, scale_factor, mode, align_corners )
+#         if mode == 'sigmoid':
+#             self.act = nn.Sigmoid()
+#         else:
+#             self.act = nn.Softmax(dim=1)
+#
+#     def forward(self, x):
+#         # x = self.upsample_1(x)
+#         x = x.float()
+#
+#         if not self.training:  # inference
+#             x = self.act(x)
+#
+#         return x
 class seg_head(nn.Module):
-    # Concatenate a list of tensors along dimension
-    def __init__(self, mode='sigmoid'):
+    def __init__(self, activation=None):
         super(seg_head, self).__init__()
-        # self.upsample_1 = nn.Upsample(size, scale_factor, mode, align_corners )
-        # self.upsample_1 = nn.Upsample(size, scale_factor, mode, align_corners )
-        if mode == 'sigmoid':
+        if activation == 'softmax':
+            self.act = nn.Softmax(dim=1)
+        elif activation == 'sigmoid':
             self.act = nn.Sigmoid()
         else:
-            self.act = nn.Softmax(dim=1)
+            self.act = nn.Identity()
 
     def forward(self, x):
-        # x = self.upsample_1(x)
-        x = x.float()
-
-        if not self.training:  # inference
-            x = self.act(x)
-
-        return x
+        return self.act(x)

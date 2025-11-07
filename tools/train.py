@@ -217,7 +217,7 @@ def main():
             logger.info('freeze two Seg heads...')
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Da_Seg_Head_para_idx + Ll_Seg_Head_para_idx:
+                if k.split(".")[1] in Da_Seg_Head_para_idx:# + Ll_Seg_Head_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
 

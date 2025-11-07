@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument('--logDir',
                         help='log directory',
                         type=str,
-                        default='runs/')
+                        default='../phenobench_runs')
     parser.add_argument('--dataDir',
                         help='data directory',
                         type=str,
@@ -336,12 +336,12 @@ def main():
             fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
 
             msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
-                      'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
-                      'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
-                      'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
-                          epoch,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
-                          p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
-                          t_inf=times[0], t_nms=times[1])
+                  'Semantic Segmentation: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
+                  'Plant Detection: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n' \
+                  'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
+                epoch, loss=total_loss, da_seg_acc=da_segment_results[0], da_seg_iou=da_segment_results[1],
+                da_seg_miou=da_segment_results[2], p=detect_results[0], r=detect_results[1], map50=detect_results[2], map=detect_results[3],
+                t_inf=times[0], t_nms=times[1])
             logger.info(msg)
 
             # if perf_indicator >= best_perf:
