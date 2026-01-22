@@ -28,3 +28,7 @@ inference/
 /semantics_submission_vis/
 /semantics_submission.zip
 /tools/phenobench_test_predictions/
+/val_prediction/
+/yolopv3_val_prediction/
+/yolopv3_phenobench_cropweed_det_cropweed_seg_1024_bs_2_nms_loss_params/
+/yolopv3_phenobench_cropweed_det_cropweed_seg_1024_bs_2_nms_conf_0.25/

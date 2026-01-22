@@ -4,7 +4,7 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
-_C.LOG_DIR = '../yolopv3_phenobench_cropweed_det_cropweed_seg_1024_bs_2'
+_C.LOG_DIR = '../yolop_phenobench'
 _C.GPUS = (0,)
 _C.WORKERS = 0 #8
 _C.PIN_MEMORY = False
@@ -50,9 +50,9 @@ _C.LOSS.LL_IOU_GAIN = 0.2 # lane line iou loss gain
 
 # DATASET related params
 _C.DATASET = CN(new_allowed=True)
-_C.DATASET.DATAROOT = '/media/beast/Storage/ilias/precision_agriculture/PhenoBench_bdd100k_style/images'       # the path of images folder
-_C.DATASET.LABELROOT = '/media/beast/Storage/ilias/precision_agriculture/PhenoBench_bdd100k_style/crop_weed_det_annotations'      # the path of det_annotations folder
-_C.DATASET.MASKROOT = '/media/beast/Storage/ilias/precision_agriculture/PhenoBench_bdd100k_style/plants_seg_annotations'                # the path of da_seg_annotations folder
+_C.DATASET.DATAROOT = '/media/beast/Storage1/ilias/precision_agriculture/PhenoBench_bdd100k_style/images'       # the path of images folder
+_C.DATASET.LABELROOT = '/media/beast/Storage1/ilias/precision_agriculture/PhenoBench_bdd100k_style/crop_weed_det_annotations'      # the path of det_annotations folder
+_C.DATASET.MASKROOT = '/media/beast/Storage1/ilias/precision_agriculture/PhenoBench_bdd100k_style/plants_seg_annotations'                # the path of da_seg_annotations folder
 # _C.DATASET.LANEROOT = '/media/beast/Storage/ilias/jim_pap/YOLOP/data/ll_seg_annotations'               # the path of ll_seg_annotations folder            # the path of ll_seg_annotations folder
 _C.DATASET.DATASET = 'BddDataset'
 _C.DATASET.TRAIN_SET = 'train'
@@ -116,16 +116,21 @@ _C.TRAIN.DET_ONLY = False          # Only train detection task
 
 _C.TRAIN.PLOT = True                # 
 
-# testing
+# testingφ
 _C.TEST = CN(new_allowed=True)
 _C.TEST.BATCH_SIZE_PER_GPU = 2
 _C.TEST.MODEL_FILE = ''
 _C.TEST.SAVE_JSON = False
 _C.TEST.SAVE_TXT = False
 _C.TEST.PLOTS = True
-_C.TEST.NMS_CONF_THRESHOLD  = 0.001 #0.25
+_C.TEST.NMS_CONF_THRESHOLD  = 0.001 # 0.25
 _C.TEST.NMS_IOU_THRESHOLD  = 0.6 #0.45 #
+_C.TEST.SAVE_DIR = "./runs/predictions"  # Where predictions will be saved (YOLO format)
 
+# --------------------- DATASET SETTINGS ---------------------
+# _C.TEST_DATASET = CN(new_allowed=True)
+# _C.TEST_DATASET.ROOT = "/media/beast/Storage/ilias/precision_agriculture/PhenoBench-v110_new/PhenoBench"       # Folder with ground-truth annotations
+# _C.DATASET.MAPPING_JSON = "/path/to/mapping.json"  # Required for test split only
 
 def update_config(cfg, args):
     cfg.defrost()

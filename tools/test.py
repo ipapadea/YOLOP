@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 import lib.dataset as dataset
 from lib.config import cfg
 from lib.config import update_config
-from lib.core.loss import get_loss
+from lib.core.loss_dikia_mou import get_loss
 from lib.core.function import validate
 from lib.core.general import fitness
 from lib.models import get_net
@@ -95,7 +95,7 @@ def main():
 
     model = model.to(device)
     model.gr = 1.0
-    model.nc = 1
+    model.nc = 2
     print('bulid model finished')
 
     print("begin to load data")
@@ -133,7 +133,7 @@ def main():
     print('load data finished')
 
     epoch = 0 #special for test
-    da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
+    da_segment_results, detect_results, total_loss,maps, times = validate(
         epoch,cfg, valid_loader, valid_dataset, model, criterion,
         final_output_dir, tb_log_dir, writer_dict,
         logger, device
@@ -141,11 +141,9 @@ def main():
     fi = fitness(np.array(detect_results).reshape(1, -1))
     msg =   'Test:    Loss({loss:.3f})\n' \
             'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
-                      'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
                       'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
                       'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
                           loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
-                          ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
                           p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
                           t_inf=times[0], t_nms=times[1])
     logger.info(msg)

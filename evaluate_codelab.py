@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument("--cfg", type=str, required=True, help="path to config file")
     parser.add_argument("--weights", type=str, required=True, help="path to trained .pth checkpoint")
     parser.add_argument("--test_dir", type=str, required=True, help="path to PhenoBench/test/images folder")
-    parser.add_argument("--output_dir", type=str, default="submission", help="output directory for results")
+    parser.add_argument("--output_dir", type=str, default="yolopv3_val_prediction", help="output directory for results")
     parser.add_argument("--conf_thres", type=float, default=0.001, help="confidence threshold")
     parser.add_argument("--iou_thres", type=float, default=0.6, help="NMS IoU threshold")
     parser.add_argument("--modelDir", type=str, default="", help="model directory")
@@ -48,7 +48,7 @@ def run_inference(model, img_path, device, conf_thres, iou_thres):
         return []
 
     h0, w0 = img0.shape[:2]
-    img = cv2.resize(img0, (512, 512))
+    img = cv2.resize(img0, (1024, 1024))
     img = img[..., ::-1].transpose(2, 0, 1)
     img = np.ascontiguousarray(img, dtype=np.float32) / 255.0
     img_tensor = torch.from_numpy(img).unsqueeze(0).to(device)
@@ -129,17 +129,17 @@ def main():
     #     f.write("code url: https://github.com/yourrepo\n")
 
     # --- Zip everything ---
-    zip_path = os.path.join(args.output_dir, "submission.zip")
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, _, files in os.walk(args.output_dir):
-            for file in files:
-                if file.endswith(".zip"):
-                    continue
-                zipf.write(os.path.join(root, file),
-                           os.path.relpath(os.path.join(root, file), args.output_dir))
-
-    print(f"\n✅ Submission ready: {zip_path}")
-    print(f"Upload this file to CodaLab.")
+    # zip_path = os.path.join(args.output_dir, "submission.zip")
+    # with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+    #     for root, _, files in os.walk(args.output_dir):
+    #         for file in files:
+    #             if file.endswith(".zip"):
+    #                 continue
+    #             zipf.write(os.path.join(root, file),
+    #                        os.path.relpath(os.path.join(root, file), args.output_dir))
+    #
+    # print(f"\n✅ Submission ready: {zip_path}")
+    # print(f"Upload this file to CodaLab.")
 
 
 if __name__ == "__main__":

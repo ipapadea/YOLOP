@@ -4,12 +4,10 @@ from .general import bbox_iou
 from .postprocess import build_targets
 from lib.core.evaluate import SegmentationMetric
 
-
 class MultiHeadLoss(nn.Module):
     """
     collect all the loss we need
     """
-
     def __init__(self, losses, cfg, lambdas=None):
         """
         Inputs:
@@ -72,7 +70,7 @@ class MultiHeadLoss(nn.Module):
         tcls, tbox, indices, anchors = build_targets(cfg, predictions[0], targets[0], model)  # targets
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
-        cp, cn = smooth_BCE(eps=0.0)
+        cp, cn = smooth_BCE(eps=0.1)
 
         BCEcls, BCEobj, BCEseg = self.losses
 
@@ -109,9 +107,38 @@ class MultiHeadLoss(nn.Module):
                     lcls += BCEcls(ps[:, 5:], t)  # BCE
             lobj += BCEobj(pi[..., 4], tobj) * balance[i]  # obj loss
 
-        drive_area_seg_predicts = predictions[1].view(-1)
-        drive_area_seg_targets = targets[1].view(-1)
-        lseg_da = BCEseg(drive_area_seg_predicts, drive_area_seg_targets)
+        # drive_area_seg_predicts = predictions[1].view(-1)
+        # drive_area_seg_targets = targets[1].view(-1)
+        # lseg_da = BCEseg(predictions[1], targets[1])
+        # assert predictions[1].shape[1] == 3, "Segmentation head must output 3 channels (classes)"
+        # assert targets[1].dtype == torch.long, "Target for CrossEntropyLoss must be LongTensor with values 0–2"
+        # Check the shape of the target tensor
+        # print(targets[1].shape)
+        # Check if the target is one-hot encoded
+        # is_one_hot = torch.all((targets[1].sum(dim=1) == 1) & (targets[1] <= 1).all())
+        # print("Is one-hot encoded:", is_one_hot)
+
+        # Visualize a sample of the target tensor
+        # print(targets[1][0, :, :])  # Check the first image in the batch
+
+        lseg_da = BCEseg(predictions[1], targets[1].argmax(1))
+        # lane_line_seg_predicts = predictions[2].view(-1)
+        # lane_line_seg_targets = targets[2].view(-1)
+        # lseg_ll = BCEseg(lane_line_seg_predicts, lane_line_seg_targets)
+
+        metric = SegmentationMetric(3)
+        nb, _, height, width = targets[1].shape
+        pad_w, pad_h = shapes[0][1][1]
+        pad_w = int(pad_w)
+        pad_h = int(pad_h)
+        # _,lane_line_pred=torch.max(predictions[2], 1)
+        # _,lane_line_gt=torch.max(targets[2], 1)
+        # lane_line_pred = lane_line_pred[:, pad_h:height-pad_h, pad_w:width-pad_w]
+        # lane_line_gt = lane_line_gt[:, pad_h:height-pad_h, pad_w:width-pad_w]
+        # metric.reset()
+        # metric.addBatch(lane_line_pred.cpu(), lane_line_gt.cpu())
+        # IoU = metric.IntersectionOverUnion()
+        # liou_ll = 1 - IoU
 
         s = 3 / no  # output count scaling
         lcls *= cfg.LOSS.CLS_GAIN * s * self.lambdas[0]
@@ -119,10 +146,15 @@ class MultiHeadLoss(nn.Module):
         lbox *= cfg.LOSS.BOX_GAIN * s * self.lambdas[2]
 
         lseg_da *= cfg.LOSS.DA_SEG_GAIN * self.lambdas[3]
+        # lseg_ll *= cfg.LOSS.LL_SEG_GAIN * self.lambdas[4]
+        # liou_ll *= cfg.LOSS.LL_IOU_GAIN * self.lambdas[5]
 
+        
         if cfg.TRAIN.DET_ONLY or cfg.TRAIN.ENC_DET_ONLY or cfg.TRAIN.DET_ONLY:
             lseg_da = 0 * lseg_da
-
+            # lseg_ll = 0 * lseg_ll
+            # liou_ll = 0 * liou_ll
+            
         if cfg.TRAIN.SEG_ONLY or cfg.TRAIN.ENC_SEG_ONLY:
             lcls = 0 * lcls
             lobj = 0 * lobj
@@ -138,18 +170,21 @@ class MultiHeadLoss(nn.Module):
             lcls = 0 * lcls
             lobj = 0 * lobj
             lbox = 0 * lbox
-
+            # lseg_ll = 0 * lseg_ll
+            # liou_ll = 0 * liou_ll
+        #
         loss = lbox + lobj + lcls + lseg_da #+ lseg_ll + liou_ll
-        return loss, (
-        lbox.item(), lobj.item(), lcls.item(), lseg_da.item(), loss.item())
-
+        # loss = lseg
+        # return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
+        # return loss, (lbox.item(), lobj.item(), lcls.item(), lseg_da.item(), lseg_ll.item(), liou_ll.item(), loss.item())
+        return loss, (lbox.item(), lobj.item(), lcls.item(), lseg_da.item(), loss.item())
 
 def get_loss(cfg, device):
     """
     get MultiHeadLoss
 
     Inputs:
-    -cfg: configuration use the loss_name part or
+    -cfg: configuration use the loss_name part or 
           function part(like regression classification)
     -device: cpu or gpu device
 
@@ -162,7 +197,7 @@ def get_loss(cfg, device):
     # object loss criteria
     BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.OBJ_POS_WEIGHT])).to(device)
     # segmentation loss criteria
-    BCEseg = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.SEG_POS_WEIGHT])).to(device)
+    BCEseg = nn.CrossEntropyLoss(weight=torch.Tensor([cfg.LOSS.SEG_POS_WEIGHT])).to(device)#nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.SEG_POS_WEIGHT])).to(device)
     # Focal loss
     gamma = cfg.LOSS.FL_GAMMA  # focal loss gamma
     if gamma > 0:
@@ -172,6 +207,64 @@ def get_loss(cfg, device):
     loss = MultiHeadLoss(loss_list, cfg=cfg, lambdas=cfg.LOSS.MULTI_HEAD_LAMBDA)
     return loss
 
+# def get_loss_new(cfg, device):
+#     """
+#     get MultiHeadLoss
+#
+#     Inputs:
+#     -cfg: configuration use the loss_name part or
+#           function part(like regression classification)
+#     -device: cpu or gpu device
+#
+#     Returns:
+#     -loss: (MultiHeadLoss)
+#     """
+#     # class loss criteria (for detection)
+#     BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.CLS_POS_WEIGHT])).to(device)
+#     BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.OBJ_POS_WEIGHT])).to(device)
+#
+#     # segmentation loss: CrossEntropy for multi-class segmentation (mutually exclusive)
+#     weight = torch.tensor([cfg.LOSS.SEG_POS_WEIGHT[0], cfg.LOSS.SEG_POS_WEIGHT[1], cfg.LOSS.SEG_POS_WEIGHT[2]]).to(device)
+#     CEseg = nn.CrossEntropyLoss(weight=weight)  # NO sigmoid, NO softmax
+#
+#     # optional: focal loss on detection
+#     gamma = cfg.LOSS.FL_GAMMA
+#     if gamma > 0:
+#         BCEcls = FocalLoss(BCEcls, gamma)
+#         BCEobj = FocalLoss(BCEobj, gamma)
+#
+#     loss_list = [BCEcls, BCEobj, CEseg]
+#     loss = MultiHeadLoss(loss_list)
+#     return loss
+
+# class MultiHeadLoss_new(nn.Module):
+#     def __init__(self, num_seg_classes=3, ignore_index=255):
+#         super(MultiHeadLoss, self).__init__()
+#         self.num_seg_classes = num_seg_classes
+#         self.ignore_index = ignore_index
+#         self.seg_loss = nn.CrossEntropyLoss(ignore_index=ignore_index)
+#
+#     def forward(self, outputs, targets, shapes=None, model=None):
+#         """
+#         outputs: [segmentation_output], segmentation_output = [B, C, H, W]
+#         targets: [det_targets, seg_targets], seg_targets = [B, C, H, W] one-hot (3 channels)
+#
+#         Returns:
+#             total_loss, {"seg_loss": ...}
+#         """
+#         seg_pred = outputs[0]           # [B, 3, H, W] – raw logits from model
+#         seg_target_onehot = targets[1]  # [B, 3, H, W] – one-hot
+#
+#         # Convert to [B, H, W] class indices by argmax over channel
+#         seg_target = seg_target_onehot.argmax(dim=1)  # [B, H, W], dtype: long
+#
+#         # Compute segmentation loss
+#         seg_loss_val = self.seg_loss(seg_pred, seg_target)
+#
+#         total_loss = seg_loss_val
+#
+#         return total_loss, {"seg_loss": seg_loss_val.item()}
+#
 
 # example
 # class L1_Loss(nn.Module)

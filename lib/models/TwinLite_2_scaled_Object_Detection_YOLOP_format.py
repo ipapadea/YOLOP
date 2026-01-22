@@ -122,6 +122,8 @@ class MCnet(nn.Module):
             if i == 0:  # Assuming index 0 is ESPNet2_Encoder_scaledExtended
                 det_feats, seg_feats = block(x)  # Unpack (C3-C6), (C2-C4)
                 x = det_feats  # For compatibility with subsequent blocks
+                # print([f.shape for f in det_feats])
+
                 cache.append(x)  # Store backbone output in cache
                 continue
 
@@ -137,6 +139,7 @@ class MCnet(nn.Module):
             # Process segmentation path (MHGD)
             elif isinstance(block, MHGDTwinLiteNet2Scaled):
                 x = block(*seg_feats)  # Unpack C2-C4 features
+                # print([f.shape for f in seg_feats])
 
             # Handle segmentation outputs
             elif i in self.seg_out_idx:

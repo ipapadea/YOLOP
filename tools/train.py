@@ -23,9 +23,9 @@ from tensorboardX import SummaryWriter
 import lib.dataset as dataset
 from lib.config import cfg
 from lib.config import update_config
-from lib.core.loss import get_loss
+from lib.core.loss_dikia_mou import get_loss
 from lib.core.function import train
-from lib.core.function import validate
+from lib.core.function import validate, run_official_phenobench_eval
 from lib.core.general import fitness
 from lib.models import get_net
 from lib.utils import is_parallel
@@ -33,7 +33,7 @@ from lib.utils.utils import get_optimizer
 from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
 from lib.utils import run_anchor
-
+from pathlib import Path
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Multitask network')
@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument('--logDir',
                         help='log directory',
                         type=str,
-                        default='phenobench_tries/')
+                        default='../yolopv3_phenobench_cropweed_det_cropweed_seg_1024_bs_2_nms_loss_params')
     parser.add_argument('--dataDir',
                         help='data directory',
                         type=str,
@@ -337,6 +337,21 @@ def main():
                 final_output_dir, tb_log_dir, writer_dict,
                 logger, device, rank
             )
+            # logger.info("=> Skipping internal validation for detection. Using PhenoBench official eval...")
+
+            prediction_dir = Path(cfg.TEST.SAVE_DIR)  # e.g. "./runs/predictions"
+            # export_dir = prediction_dir / f"eval_epoch_{epoch}"
+            # phenobench_gt_dir = Path(cfg.TEST_DATASET.ROOT)
+            # split = "val"  # or "test", depending on cfg
+
+            # run_official_phenobench_eval(
+            #     phenobench_dir=phenobench_gt_dir,
+            #     prediction_dir=prediction_dir,
+            #     export_dir=export_dir,
+            #     split=split,
+            #     mapping_path=cfg.DATASET.MAPPING_JSON if split == "test" else None
+            # )
+
             fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
 
             msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \

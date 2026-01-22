@@ -23,7 +23,7 @@ from tensorboardX import SummaryWriter
 import lib.dataset as dataset
 from lib.config import cfg
 from lib.config import update_config
-from lib.core.loss import get_loss
+from lib.core.loss_dikia_mou import get_loss
 from lib.core.function import train
 from lib.core.function import validate
 from lib.core.general import fitness
