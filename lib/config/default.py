@@ -43,9 +43,13 @@ _C.LOSS.SEG_POS_WEIGHT = 1.0  # segmentation loss positive weights
 _C.LOSS.BOX_GAIN = 0.05  # box loss gain
 _C.LOSS.CLS_GAIN = 0.5  # classification loss gain
 _C.LOSS.OBJ_GAIN = 1.0  # object loss gain
-_C.LOSS.DA_SEG_GAIN = 0.2  # driving area segmentation loss gain
-_C.LOSS.LL_SEG_GAIN = 0.2  # lane line segmentation loss gain
+_C.LOSS.DA_SEG_GAIN = 0.6  # driving area segmentation loss gain (increased from 0.2 to match TriLiteNet)
+_C.LOSS.LL_SEG_GAIN = 0.6  # lane line segmentation loss gain (increased from 0.2 to match TriLiteNet)
 _C.LOSS.LL_IOU_GAIN = 0.2 # lane line iou loss gain
+
+# TriLiteNet-style dual loss gains
+_C.LOSS.FL_GAIN = 0.3  # FocalLoss gain for segmentation
+_C.LOSS.TK_GAIN = 0.3  # TverskyLoss gain for segmentation
 
 
 # DATASET related params
@@ -82,7 +86,7 @@ _C.TRAIN.WARMUP_EPOCHS = 3.0
 _C.TRAIN.WARMUP_BIASE_LR = 0.1
 _C.TRAIN.WARMUP_MOMENTUM = 0.8
 
-_C.TRAIN.OPTIMIZER = 'adam'
+_C.TRAIN.OPTIMIZER = 'adamw'  # Changed from 'adam' to 'adamw' for better regularization (TriLiteNet approach)
 _C.TRAIN.MOMENTUM = 0.937
 _C.TRAIN.WD = 0.0005
 _C.TRAIN.NESTEROV = True

@@ -3,6 +3,7 @@ import torch
 from .general import bbox_iou
 from .postprocess import build_targets
 from lib.core.evaluate import SegmentationMetric
+from lib.core.twinlite_loss import TverskyLoss, FocalLossSeg
 
 class MultiHeadLoss(nn.Module):
     """
@@ -72,7 +73,7 @@ class MultiHeadLoss(nn.Module):
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         cp, cn = smooth_BCE(eps=0.0)
 
-        BCEcls, BCEobj, BCEseg = self.losses
+        BCEcls, BCEobj, FocalSeg, TverskyDaSeg, TverskyLlSeg = self.losses
 
         # Calculate Losses
         nt = 0  # number of targets
@@ -107,25 +108,39 @@ class MultiHeadLoss(nn.Module):
                     lcls += BCEcls(ps[:, 5:], t)  # BCE
             lobj += BCEobj(pi[..., 4], tobj) * balance[i]  # obj loss
 
-        drive_area_seg_predicts = predictions[1].view(-1)
-        drive_area_seg_targets = targets[1].view(-1)
-        lseg_da = BCEseg(drive_area_seg_predicts, drive_area_seg_targets)
-
-        lane_line_seg_predicts = predictions[2].view(-1)
-        lane_line_seg_targets = targets[2].view(-1)
-        lseg_ll = BCEseg(lane_line_seg_predicts, lane_line_seg_targets)
-
-        metric = SegmentationMetric(2)
+        # TriLiteNet-style dual loss for segmentation (FocalLoss + TverskyLoss)
         nb, _, height, width = targets[1].shape
         pad_w, pad_h = shapes[0][1][1]
         pad_w = int(pad_w)
         pad_h = int(pad_h)
-        _,lane_line_pred=torch.max(predictions[2], 1)
-        _,lane_line_gt=torch.max(targets[2], 1)
-        lane_line_pred = lane_line_pred[:, pad_h:height-pad_h, pad_w:width-pad_w]
-        lane_line_gt = lane_line_gt[:, pad_h:height-pad_h, pad_w:width-pad_w]
+        
+        # Get predictions and ground truth for drivable area
+        drivable_area_pred = predictions[1]
+        drivable_area_gt = targets[1]
+        _, drivable_area_gt_cls = torch.max(drivable_area_gt, 1)
+        
+        # Get predictions and ground truth for lane lines
+        lane_line_pred = predictions[2]
+        lane_line_gt = targets[2]
+        _, lane_line_gt_cls = torch.max(lane_line_gt, 1)
+        
+        # Compute dual loss: FocalLoss + TverskyLoss (TriLiteNet approach)
+        lseg_focal = FocalSeg(drivable_area_pred, drivable_area_gt_cls) + FocalSeg(lane_line_pred, lane_line_gt_cls)
+        lseg_tversky = TverskyDaSeg(drivable_area_pred, drivable_area_gt_cls) + TverskyLlSeg(lane_line_pred, lane_line_gt_cls)
+        
+        # Combine losses with TriLiteNet weights
+        lseg_da = lseg_focal * cfg.LOSS.FL_GAIN + lseg_tversky * cfg.LOSS.TK_GAIN
+        lseg_ll = 0.0  # Already included in combined loss above
+        
+        # Lane line IoU loss (keep existing implementation)
+        _, lane_line_pred_cls = torch.max(predictions[2], 1)
+        _, lane_line_gt_cls_iou = torch.max(targets[2], 1)
+        lane_line_pred_cls = lane_line_pred_cls[:, pad_h:height-pad_h, pad_w:width-pad_w]
+        lane_line_gt_cls_iou = lane_line_gt_cls_iou[:, pad_h:height-pad_h, pad_w:width-pad_w]
+        
+        metric = SegmentationMetric(2)
         metric.reset()
-        metric.addBatch(lane_line_pred.cpu(), lane_line_gt.cpu())
+        metric.addBatch(lane_line_pred_cls.cpu(), lane_line_gt_cls_iou.cpu())
         IoU = metric.IntersectionOverUnion()
         liou_ll = 1 - IoU
 
@@ -134,8 +149,10 @@ class MultiHeadLoss(nn.Module):
         lobj *= cfg.LOSS.OBJ_GAIN * s * (1.4 if no == 4 else 1.) * self.lambdas[1]
         lbox *= cfg.LOSS.BOX_GAIN * s * self.lambdas[2]
 
-        lseg_da *= cfg.LOSS.DA_SEG_GAIN * self.lambdas[3]
-        lseg_ll *= cfg.LOSS.LL_SEG_GAIN * self.lambdas[4]
+        # Note: lseg_da already includes both DA and LL combined with dual loss approach
+        # The FL_GAIN and TK_GAIN are applied above
+        lseg_da *= self.lambdas[3]
+        lseg_ll *= self.lambdas[4]  # This is 0.0 now, kept for compatibility
         liou_ll *= cfg.LOSS.LL_IOU_GAIN * self.lambdas[5]
 
         
@@ -165,12 +182,12 @@ class MultiHeadLoss(nn.Module):
         loss = lbox + lobj + lcls + lseg_da + lseg_ll + liou_ll
         # loss = lseg
         # return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
-        return loss, (lbox.item(), lobj.item(), lcls.item(), lseg_da.item(), lseg_ll.item(), liou_ll.item(), loss.item())
+        return loss, (lbox.item(), lobj.item(), lcls.item(), lseg_focal.item(), lseg_tversky.item(), lseg_da.item(), liou_ll.item(), loss.item())
 
 
 def get_loss(cfg, device):
     """
-    get MultiHeadLoss
+    get MultiHeadLoss with TriLiteNet-style dual loss approach
 
     Inputs:
     -cfg: configuration use the loss_name part or 
@@ -185,14 +202,18 @@ def get_loss(cfg, device):
     BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.CLS_POS_WEIGHT])).to(device)
     # object loss criteria
     BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.OBJ_POS_WEIGHT])).to(device)
-    # segmentation loss criteria
-    BCEseg = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([cfg.LOSS.SEG_POS_WEIGHT])).to(device)
-    # Focal loss
+    
+    # TriLiteNet-style segmentation losses
+    FocalSeg = FocalLossSeg(mode="multiclass", alpha=0.25)
+    TverskyDaSeg = TverskyLoss(mode="multiclass", alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=True)
+    TverskyLlSeg = TverskyLoss(mode="multiclass", alpha=0.9, beta=0.1, gamma=4.0/3, from_logits=True)
+    
+    # Focal loss for detection
     gamma = cfg.LOSS.FL_GAMMA  # focal loss gamma
     if gamma > 0:
         BCEcls, BCEobj = FocalLoss(BCEcls, gamma), FocalLoss(BCEobj, gamma)
 
-    loss_list = [BCEcls, BCEobj, BCEseg]
+    loss_list = [BCEcls, BCEobj, FocalSeg, TverskyDaSeg, TverskyLlSeg]
     loss = MultiHeadLoss(loss_list, cfg=cfg, lambdas=cfg.LOSS.MULTI_HEAD_LAMBDA)
     return loss
 
